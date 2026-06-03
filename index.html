@@ -16,22 +16,39 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: #0a0f1e; overscroll-behavior: none; }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        background: #0a0f1e;
+        -webkit-overflow-scrolling: touch;
+      }
+      input[type=number] {
+        -webkit-appearance: none;
+        -moz-appearance: textfield;
+        appearance: textfield;
+      }
       input[type=number]::-webkit-inner-spin-button,
-      input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
-      input[type=number] { -moz-appearance: textfield; }
+      input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      button, input {
+        -webkit-tap-highlight-color: transparent;
+        outline: none;
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
+      // Unregister any existing service workers to fix Safari caching issues
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/Mundial/sw.js')
-            .then(r => console.log('SW registered:', r.scope))
-            .catch(e => console.log('SW error:', e));
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (let registration of registrations) {
+            registration.unregister();
+            console.log('SW unregistered');
+          }
         });
       }
     </script>
