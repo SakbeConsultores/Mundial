@@ -36,6 +36,129 @@ const FLAGS = {
   POR:"🇵🇹",COD:"🇨🇩",UZB:"🇺🇿",COL:"🇨🇴",ENG:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",CRO:"🇭🇷",GHA:"🇬🇭",PAN:"🇵🇦",
 };
 
+// Match → City
+const MATCH_CITY = {
+  1:"Ciudad de México",
+  2:"Guadalajara",
+  3:"Toronto",
+  4:"Los Angeles",
+  5:"Boston",
+  6:"Vancouver",
+  7:"NY/NJ",
+  8:"San Francisco",
+  9:"Filadelfia",
+  10:"Houston",
+  11:"Dallas",
+  12:"Monterrey",
+  13:"Miami",
+  14:"Atlanta",
+  15:"Los Angeles",
+  16:"Seattle",
+  17:"NY/NJ",
+  18:"Boston",
+  19:"Kansas City",
+  20:"San Francisco",
+  21:"Toronto",
+  22:"Dallas",
+  23:"Houston",
+  24:"Ciudad de México",
+  25:"Atlanta",
+  26:"Los Angeles",
+  27:"Vancouver",
+  28:"Guadalajara",
+  29:"Filadelfia",
+  30:"Boston",
+  31:"San Francisco",
+  32:"Seattle",
+  33:"Toronto",
+  34:"Kansas City",
+  35:"Houston",
+  36:"Monterrey",
+  37:"Miami",
+  38:"Atlanta",
+  39:"Los Angeles",
+  40:"Vancouver",
+  41:"NY/NJ",
+  42:"Filadelfia",
+  43:"Dallas",
+  44:"San Francisco",
+  45:"Boston",
+  46:"Toronto",
+  47:"Houston",
+  48:"Guadalajara",
+  49:"Miami",
+  50:"Atlanta",
+  51:"Vancouver",
+  52:"Seattle",
+  53:"Ciudad de México",
+  54:"Monterrey",
+  55:"Filadelfia",
+  56:"NY/NJ",
+  57:"Dallas",
+  58:"Kansas City",
+  59:"Los Angeles",
+  60:"San Francisco",
+  61:"Boston",
+  62:"Toronto",
+  63:"Seattle",
+  64:"Vancouver",
+  65:"Houston",
+  66:"Guadalajara",
+  67:"NY/NJ",
+  68:"Filadelfia",
+  69:"Kansas City",
+  70:"Dallas",
+  71:"Miami",
+  72:"Atlanta",
+  73:"Los Angeles",
+  74:"Boston",
+  75:"Monterrey",
+  76:"Houston",
+  77:"NY/NJ",
+  78:"Dallas",
+  79:"Ciudad de México",
+  80:"Atlanta",
+  81:"San Francisco",
+  82:"Seattle",
+  83:"Toronto",
+  84:"Los Angeles",
+  85:"Vancouver",
+  86:"Miami",
+  87:"Kansas City",
+  88:"Dallas",
+  89:"Filadelfia",
+  90:"Houston",
+  91:"NY/NJ",
+  92:"Ciudad de México",
+  93:"Dallas",
+  94:"Seattle",
+  95:"Atlanta",
+  96:"Vancouver",
+  97:"Boston",
+  98:"Los Angeles",
+  99:"Miami",
+  100:"Kansas City",
+  101:"Dallas",
+  102:"Atlanta",
+  103:"Miami",
+  104:"NY/NJ",
+};
+
+const GROUP_CITIES = {
+  A:["Atlanta","Ciudad de México","Guadalajara","Monterrey"],
+  B:["Los Angeles","San Francisco","Seattle","Toronto","Vancouver"],
+  C:["Atlanta","Boston","Filadelfia","Miami","NY/NJ"],
+  D:["Los Angeles","San Francisco","Seattle","Vancouver"],
+  E:["Filadelfia","Houston","Kansas City","NY/NJ","Toronto"],
+  F:["Dallas","Houston","Kansas City","Monterrey"],
+  G:["Los Angeles","Seattle","Vancouver"],
+  H:["Atlanta","Guadalajara","Houston","Miami"],
+  I:["Boston","Filadelfia","NY/NJ","Toronto"],
+  J:["Dallas","Kansas City","San Francisco"],
+  K:["Atlanta","Ciudad de México","Guadalajara","Houston","Miami"],
+  L:["Boston","Dallas","Filadelfia","NY/NJ","Toronto"],
+};
+
 // ─────────────────────────────────────────────
 // GROUP STAGE MATCHES (ids 1–72)
 // ─────────────────────────────────────────────
@@ -371,9 +494,14 @@ export default function App() {
                 const done=groupComplete(g,results);
                 return(
                   <div key={g} style={{background:"#0f1a2e",border:"1px solid #1e2d4a",borderRadius:8,overflow:"hidden"}}>
-                    <div style={{background:"#c9a227",color:"#0a0f1e",padding:"7px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:20,fontWeight:900,letterSpacing:1}}>GRUPO {g}</span>
-                      {done&&<span style={{fontSize:10,fontWeight:700,background:"#0a0f1e",color:"#c9a227",padding:"2px 6px",borderRadius:3}}>COMPLETO</span>}
+                    <div style={{background:"#c9a227",color:"#0a0f1e",padding:"7px 14px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontSize:20,fontWeight:900,letterSpacing:1}}>GRUPO {g}</span>
+                        {done&&<span style={{fontSize:10,fontWeight:700,background:"#0a0f1e",color:"#c9a227",padding:"2px 6px",borderRadius:3}}>COMPLETO</span>}
+                      </div>
+                      <div style={{fontSize:9,letterSpacing:.5,color:"#0a0f1e",opacity:.75,marginTop:2}}>
+                        📍 {GROUP_CITIES[g]?.join(" · ")}
+                      </div>
                     </div>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead>
@@ -553,7 +681,10 @@ function MatchCard({match,result,onSet}) {
   return(
     <div style={{background:"#0f1a2e",border:`1px solid ${played?"#c9a22755":"#1e2d4a"}`,borderRadius:8,padding:"10px 12px",boxShadow:played?"0 0 10px rgba(201,162,39,.1)":"none"}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:7,fontSize:10,color:"#8899bb"}}>
-        <span>GRP {match.group} · {match.time} ET</span>
+        <div>
+          <span>GRP {match.group} · {match.time} ET</span>
+          <span style={{marginLeft:5,color:"#c9a22799"}}>📍{MATCH_CITY[match.id]}</span>
+        </div>
         <span style={{background:"#1e2d4a",borderRadius:3,padding:"1px 5px",color:played?"#4fc3f7":"#8899bb"}}>{played?"FIN":"PEN"}</span>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -576,10 +707,13 @@ function KOMatchCard({match,homeTeam,awayTeam,result,onSet}) {
   const hWin=played&&hg>ag,aWin=played&&ag>hg,draw=played&&hg===ag;
 
   return(
-    <div style={{background:"#0f1a2e",border:`1px solid ${played?"#c9a22755":resolved?"#1e3d5a":"#1e2d4a"}`,borderRadius:8,padding:"10px 12px",opacity:resolved?1:0.6,boxShadow:played?"0 0 10px rgba(201,162,39,.1)":"none"}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:7,fontSize:10,color:"#8899bb"}}>
-        <span style={{color:"#c9a227",fontWeight:700}}>{match.label||`P${match.id}`} · {match.time} ET</span>
-        <span style={{background:"#1e2d4a",borderRadius:3,padding:"1px 5px",color:played?"#4fc3f7":resolved?"#c9a227":"#556"}}>
+    <div style={{background:resolved?"#111e35":"#0d1525",border:`1px solid ${played?"#c9a22755":resolved?"#2a4a6a":"#1a2a3a"}`,borderRadius:8,padding:"10px 12px",opacity:resolved?1:0.55,boxShadow:played?"0 0 10px rgba(201,162,39,.1)":"none"}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:7,fontSize:10}}>
+        <div>
+          <span style={{color:"#e8eaf6",fontWeight:700}}>{match.label||`P${match.id}`} · {match.time} ET</span>
+          <span style={{marginLeft:5,color:"#a0b4cc"}}>📍{MATCH_CITY[match.id]}</span>
+        </div>
+        <span style={{background:"#1e2d4a",borderRadius:3,padding:"1px 5px",color:played?"#4fc3f7":resolved?"#4fc3f7":"#8899bb"}}>
           {played?"FIN":resolved?"LISTO":"POR DEF."}
         </span>
       </div>
@@ -606,10 +740,10 @@ function TeamBlock({code,fallback,win,align}) {
   return(
     <div style={{flex:1,textAlign:align,minWidth:0}}>
       <div style={{fontSize:20,lineHeight:1.1}}>{code?FLAGS[code]:"🏳️"}</div>
-      <div style={{fontSize:12,fontWeight:win?700:500,color:win?"#c9a227":code?"#ccd":"#4a6080",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+      <div style={{fontSize:12,fontWeight:win?700:500,color:win?"#c9a227":code?"#e8eaf6":"#7a9ab8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
         {code||fallback||"TBD"}
       </div>
-      {code&&<div style={{fontSize:9,color:"#4a6080",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{TEAM_NAMES[code]}</div>}
+      {code&&<div style={{fontSize:9,color:"#7a9ab8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{TEAM_NAMES[code]}</div>}
     </div>
   );
 }
@@ -633,4 +767,3 @@ function SectionTitle({children,style={}}) {
     </h2>
   );
 }
-
