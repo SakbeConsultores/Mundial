@@ -36,6 +36,15 @@ const FLAGS = {
   POR:"🇵🇹",COD:"🇨🇩",UZB:"🇺🇿",COL:"🇨🇴",ENG:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",CRO:"🇭🇷",GHA:"🇬🇭",PAN:"🇵🇦",
 };
 
+
+// Convert EST time to ECU (-1h) and CDMX (-2h)
+function convertTime(estTime) {
+  const [h, m] = estTime.split(":").map(Number);
+  const ecu = `${String((h - 1 + 24) % 24).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  const cdmx = `${String((h - 2 + 24) % 24).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  return { est: estTime, ecu, cdmx };
+}
+
 // Match → City
 const MATCH_CITY = {
   1:"Ciudad de México",
@@ -680,13 +689,21 @@ function MatchCard({match,result,onSet}) {
   const hWin=played&&hg>ag,aWin=played&&ag>hg,draw=played&&hg===ag;
   return(
     <div style={{background:"#0f1a2e",border:`1px solid ${played?"#c9a22755":"#1e2d4a"}`,borderRadius:8,padding:"10px 12px",boxShadow:played?"0 0 10px rgba(201,162,39,.1)":"none"}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:7,fontSize:10,color:"#8899bb"}}>
-        <div>
-          <span>GRP {match.group} · {match.time} ET</span>
-          <span style={{marginLeft:5,color:"#c9a22799"}}>📍{MATCH_CITY[match.id]}</span>
+      {(()=>{const t=convertTime(match.time);return(
+      <div style={{marginBottom:7}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8899bb"}}>
+          <span>GRP {match.group} · <span style={{color:"#c9a22799"}}>📍{MATCH_CITY[match.id]}</span></span>
+          <span style={{background:"#1e2d4a",borderRadius:3,padding:"1px 5px",color:played?"#4fc3f7":"#8899bb"}}>{played?"FIN":"PEN"}</span>
         </div>
-        <span style={{background:"#1e2d4a",borderRadius:3,padding:"1px 5px",color:played?"#4fc3f7":"#8899bb"}}>{played?"FIN":"PEN"}</span>
+        <div style={{fontSize:10,marginTop:2}}>
+          <span style={{color:"#ffffff",fontWeight:600}}>{t.est} EST</span>
+          <span style={{margin:"0 4px",color:"#4a6080"}}>·</span>
+          <span style={{color:"#c8d8e8"}}>{t.ecu} ECU</span>
+          <span style={{margin:"0 4px",color:"#4a6080"}}>·</span>
+          <span style={{color:"#c8d8e8"}}>{t.cdmx} CDMX</span>
+        </div>
       </div>
+      );})()}
       <div style={{display:"flex",alignItems:"center",gap:6}}>
         <TeamBlock code={match.home} win={hWin} align="right"/>
         <div style={{display:"flex",alignItems:"center",gap:3}}>
@@ -708,15 +725,23 @@ function KOMatchCard({match,homeTeam,awayTeam,result,onSet}) {
 
   return(
     <div style={{background:resolved?"#111e35":"#0d1525",border:`1px solid ${played?"#c9a22755":resolved?"#2a4a6a":"#1a2a3a"}`,borderRadius:8,padding:"10px 12px",opacity:resolved?1:0.55,boxShadow:played?"0 0 10px rgba(201,162,39,.1)":"none"}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:7,fontSize:10}}>
-        <div>
-          <span style={{color:"#e8eaf6",fontWeight:700}}>{match.label||`P${match.id}`} · {match.time} ET</span>
-          <span style={{marginLeft:5,color:"#a0b4cc"}}>📍{MATCH_CITY[match.id]}</span>
+      {(()=>{const t=convertTime(match.time);return(
+      <div style={{marginBottom:7}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
+          <span style={{color:"#e8eaf6",fontWeight:700}}>{match.label||`P${match.id}`} · <span style={{color:"#a0b4cc"}}>📍{MATCH_CITY[match.id]}</span></span>
+          <span style={{background:"#1e2d4a",borderRadius:3,padding:"1px 5px",color:played?"#4fc3f7":resolved?"#4fc3f7":"#8899bb"}}>
+            {played?"FIN":resolved?"LISTO":"POR DEF."}
+          </span>
         </div>
-        <span style={{background:"#1e2d4a",borderRadius:3,padding:"1px 5px",color:played?"#4fc3f7":resolved?"#4fc3f7":"#8899bb"}}>
-          {played?"FIN":resolved?"LISTO":"POR DEF."}
-        </span>
+        <div style={{fontSize:10,marginTop:2}}>
+          <span style={{color:"#ffffff",fontWeight:600}}>{t.est} EST</span>
+          <span style={{margin:"0 4px",color:"#4a6080"}}>·</span>
+          <span style={{color:"#c8d8e8"}}>{t.ecu} ECU</span>
+          <span style={{margin:"0 4px",color:"#4a6080"}}>·</span>
+          <span style={{color:"#c8d8e8"}}>{t.cdmx} CDMX</span>
+        </div>
       </div>
+      );})()}
       <div style={{display:"flex",alignItems:"center",gap:6}}>
         <TeamBlock code={homeTeam} fallback={slotLabel(match.homeSlot)} win={hWin} align="right"/>
         <div style={{display:"flex",alignItems:"center",gap:3}}>
