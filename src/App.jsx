@@ -37,6 +37,14 @@ const FLAGS = {
 };
 
 
+
+// Format date for display
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("es-MX", {weekday:"short", day:"numeric", month:"short"}).toUpperCase();
+}
+
 // Convert EST time to ECU (-1h) and CDMX (-2h)
 function convertTime(estTime) {
   const [h, m] = estTime.split(":").map(Number);
@@ -196,10 +204,10 @@ const GROUP_MATCHES = [
   {id:22,group:"L",date:"2026-06-17",time:"16:00",home:"ENG",away:"CRO"},
   {id:23,group:"K",date:"2026-06-17",time:"13:00",home:"POR",away:"COD"},
   {id:24,group:"K",date:"2026-06-17",time:"22:00",home:"UZB",away:"COL"},
-  {id:25,group:"A",date:"2026-06-18",time:"12:00",home:"CZE",away:"RSA"},
+  {id:25,group:"A",date:"2026-06-17",time:"12:00",home:"CZE",away:"RSA"},
   {id:26,group:"B",date:"2026-06-18",time:"15:00",home:"SUI",away:"BIH"},
   {id:27,group:"B",date:"2026-06-18",time:"18:00",home:"CAN",away:"QAT"},
-  {id:28,group:"A",date:"2026-06-18",time:"21:00",home:"MEX",away:"KOR"},
+  {id:28,group:"A",date:"2026-06-17",time:"21:00",home:"MEX",away:"KOR"},
   {id:29,group:"C",date:"2026-06-19",time:"20:30",home:"BRA",away:"HAI"},
   {id:30,group:"C",date:"2026-06-19",time:"18:00",home:"SCO",away:"MAR"},
   {id:31,group:"D",date:"2026-06-19",time:"23:00",home:"TUR",away:"PAR"},
@@ -728,12 +736,17 @@ function KOMatchCard({match,homeTeam,awayTeam,result,onSet}) {
       {(()=>{const t=convertTime(match.time);return(
       <div style={{marginBottom:7}}>
         <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
-          <span style={{color:"#e8eaf6",fontWeight:700}}>{match.label||`P${match.id}`} · <span style={{color:"#a0b4cc"}}>📍{MATCH_CITY[match.id]}</span></span>
+          <div>
+            <span style={{color:"#c9a227",fontWeight:700}}>{match.label||`P${match.id}`}</span>
+            <span style={{color:"#a0b4cc",marginLeft:5}}>📍{MATCH_CITY[match.id]}</span>
+          </div>
           <span style={{background:"#1e2d4a",borderRadius:3,padding:"1px 5px",color:played?"#4fc3f7":resolved?"#4fc3f7":"#8899bb"}}>
             {played?"FIN":resolved?"LISTO":"POR DEF."}
           </span>
         </div>
         <div style={{fontSize:10,marginTop:2}}>
+          <span style={{color:"#c8d8e8",fontWeight:600}}>{formatDate(match.date)}</span>
+          <span style={{margin:"0 4px",color:"#4a6080"}}>·</span>
           <span style={{color:"#ffffff",fontWeight:600}}>{t.est} EST</span>
           <span style={{margin:"0 4px",color:"#4a6080"}}>·</span>
           <span style={{color:"#c8d8e8"}}>{t.ecu} ECU</span>
