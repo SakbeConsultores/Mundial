@@ -744,7 +744,7 @@ function KOMatchCard({match,homeTeam,awayTeam,result,onSet}) {
             {played?"FIN":resolved?"LISTO":"POR DEF."}
           </span>
         </div>
-        <div style={{fontSize:12,marginTop:2}}>
+        <div style={{fontSize:10,marginTop:2}}>
           <span style={{color:"#c8d8e8",fontWeight:600}}>{formatDate(match.date)}</span>
           <span style={{margin:"0 4px",color:"#4a6080"}}>·</span>
           <span style={{color:"#ffffff",fontWeight:600}}>{t.est} EST</span>
