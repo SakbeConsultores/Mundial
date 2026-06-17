@@ -204,10 +204,10 @@ const GROUP_MATCHES = [
   {id:22,group:"L",date:"2026-06-17",time:"16:00",home:"ENG",away:"CRO"},
   {id:23,group:"K",date:"2026-06-17",time:"13:00",home:"POR",away:"COD"},
   {id:24,group:"K",date:"2026-06-17",time:"22:00",home:"UZB",away:"COL"},
-  {id:25,group:"A",date:"2026-06-18",time:"12:00",home:"CZE",away:"RSA"},
+  {id:25,group:"A",date:"2026-06-17",time:"12:00",home:"CZE",away:"RSA"},
   {id:26,group:"B",date:"2026-06-18",time:"15:00",home:"SUI",away:"BIH"},
   {id:27,group:"B",date:"2026-06-18",time:"18:00",home:"CAN",away:"QAT"},
-  {id:28,group:"A",date:"2026-06-18",time:"21:00",home:"MEX",away:"KOR"},
+  {id:28,group:"A",date:"2026-06-17",time:"21:00",home:"MEX",away:"KOR"},
   {id:29,group:"C",date:"2026-06-19",time:"20:30",home:"BRA",away:"HAI"},
   {id:30,group:"C",date:"2026-06-19",time:"18:00",home:"SCO",away:"MAR"},
   {id:31,group:"D",date:"2026-06-19",time:"23:00",home:"TUR",away:"PAR"},
@@ -420,7 +420,7 @@ function slotLabel(slot) {
 // ─────────────────────────────────────────────
 // GLOBAL RANKING (FIFA tiebreaker rules 1-6)
 // ─────────────────────────────────────────────
-function calcGlobalRanking(results) {
+function calcGlobalRanking(results, discipline={}) {
   // Build stats for all 48 teams
   const stats = {};
   Object.values(GROUPS).flat().forEach(t => {
@@ -493,6 +493,10 @@ function calcGlobalRanking(results) {
           if (hb.gf !== ha.gf) return hb.gf - ha.gf;
         }
       }
+      // 7. Disciplina (menos puntos = mejor)
+      const da = discipline[a.code]?.pts ?? 0;
+      const db = discipline[b.code]?.pts ?? 0;
+      if (da !== db) return da - db;
       return 0;
     });
   }
@@ -512,6 +516,25 @@ export default function App() {
   });
   const [saved,setSaved]=useState(false);
   const [filterGroup,setFilterGroup]=useState("Todos");
+  const [discipline,setDiscipline]=useState(()=>{
+    try{
+      const s=localStorage.getItem("fwc2026_discipline");
+      if(s) return JSON.parse(s);
+    }catch{}
+    const d={};
+    Object.values(GROUPS).flat().forEach(t=>{d[t]={ta:0,tr:0,pts:0};});
+    return d;
+  });
+
+  // Save discipline to localStorage
+  useEffect(()=>{
+    try{localStorage.setItem("fwc2026_discipline",JSON.stringify(discipline));}catch{}
+  },[discipline]);
+
+  const setDiscField=(code,field,val)=>{
+    const num=val===""?"":Math.max(0,parseInt(val)||0);
+    setDiscipline(p=>({...p,[code]:{...p[code],[field]:num}}));
+  };
   const [countdown,setCountdown]=useState("");
 
   useEffect(()=>{
@@ -540,11 +563,11 @@ export default function App() {
 
   const standings=useMemo(()=>allStandings(results),[results]);
   const knockoutWinners=useMemo(()=>computeKnockout(results,standings),[results,standings]);
-  const globalRanking=useMemo(()=>calcGlobalRanking(results),[results]);
+  const globalRanking=useMemo(()=>calcGlobalRanking(results,discipline),[results,discipline]);
 
   const filtered=filterGroup==="Todos"?GROUP_MATCHES:GROUP_MATCHES.filter(m=>m.group===filterGroup);
 
-  const TABS=[["grupos","GRUPOS"],["partidos","PARTIDOS"],["posiciones","POSICIONES"],["bracket","BRACKET"]];
+  const TABS=[["grupos","GRUPOS"],["partidos","PARTIDOS"],["posiciones","POSICIONES"],["bracket","BRACKET"],["disciplina","DISCIPLINA"]];
 
   return(
     <div style={{minHeight:"100vh",minHeight:"100dvh",background:"#0a0f1e",fontFamily:"'Barlow Condensed','Arial Narrow',sans-serif",color:"#e8eaf6",paddingBottom:80}}>
@@ -737,6 +760,69 @@ export default function App() {
         {/* ── BRACKET ── */}
         {tab==="bracket"&&(
           <BracketView standings={standings} knockoutWinners={knockoutWinners} results={results} onSet={setGoals} groupResults={results}/>
+        )}
+
+        {tab==="disciplina"&&(
+          <div>
+            <SectionTitle>Tabla de Disciplina</SectionTitle>
+            <div style={{fontSize:11,color:"#6a8aaa",marginBottom:12}}>
+              Actualiza diariamente · TA = Tarjetas amarillas · TR = Tarjetas rojas · PTS = Puntos disciplina FIFA · Se usa como criterio de desempate #7 en el ranking global
+            </div>
+            <div style={{background:"#0f1a2e",border:"1px solid #1e2d4a",borderRadius:8,overflow:"hidden"}}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:340}}>
+                  <thead>
+                    <tr style={{borderBottom:"2px solid #c9a227",color:"#8899bb",fontSize:11,background:"#0d1828"}}>
+                      <th style={{padding:"8px 10px",textAlign:"center",width:36}}>#</th>
+                      <th style={{padding:"8px 10px",textAlign:"left"}}>EQUIPO</th>
+                      <th style={{padding:"8px 10px",textAlign:"center",width:36}}>GRP</th>
+                      <th style={{padding:"8px 10px",textAlign:"center",width:54}}>TA</th>
+                      <th style={{padding:"8px 10px",textAlign:"center",width:54}}>TR</th>
+                      <th style={{padding:"8px 10px",textAlign:"center",width:64}}>PTS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.values(GROUPS).flat()
+                      .map(code=>({code, group:Object.entries(GROUPS).find(([,t])=>t.includes(code))[0], ...(discipline[code]||{ta:0,tr:0,pts:0})}))
+                      .sort((a,b)=>(b.pts||0)-(a.pts||0)||(b.ta||0)-(a.ta||0))
+                      .map((row,i)=>(
+                      <tr key={row.code} style={{borderBottom:"1px solid #0d1828",background:i%2===0?"transparent":"rgba(255,255,255,.02)"}}>
+                        <td style={{padding:"6px 10px",textAlign:"center",color:"#4a6080",fontSize:11}}>{i+1}</td>
+                        <td style={{padding:"6px 10px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:18}}>{FLAGS[row.code]}</span>
+                            <div>
+                              <div style={{fontWeight:700,fontSize:13}}>{row.code}</div>
+                              <div style={{fontSize:10,color:"#6a8aaa"}}>{TEAM_NAMES[row.code]}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{padding:"6px 10px",textAlign:"center",fontSize:11,color:"#6a8aaa",fontWeight:700}}>{row.group}</td>
+                        <td style={{padding:"6px 10px",textAlign:"center"}}>
+                          <input type="number" min="0" value={discipline[row.code]?.ta??0}
+                            onChange={e=>setDiscField(row.code,"ta",e.target.value)}
+                            style={{width:44,height:32,textAlign:"center",fontSize:14,fontWeight:700,background:"#0a1020",border:"1px solid #1e2d4a",borderRadius:5,color:"#f59e0b",fontFamily:"inherit",outline:"none"}}/>
+                        </td>
+                        <td style={{padding:"6px 10px",textAlign:"center"}}>
+                          <input type="number" min="0" value={discipline[row.code]?.tr??0}
+                            onChange={e=>setDiscField(row.code,"tr",e.target.value)}
+                            style={{width:44,height:32,textAlign:"center",fontSize:14,fontWeight:700,background:"#0a1020",border:"1px solid #1e2d4a",borderRadius:5,color:"#ef5350",fontFamily:"inherit",outline:"none"}}/>
+                        </td>
+                        <td style={{padding:"6px 10px",textAlign:"center"}}>
+                          <input type="number" min="0" value={discipline[row.code]?.pts??0}
+                            onChange={e=>setDiscField(row.code,"pts",e.target.value)}
+                            style={{width:52,height:32,textAlign:"center",fontSize:14,fontWeight:800,background:"#0a1020",border:"1px solid #c9a22755",borderRadius:5,color:"#c9a227",fontFamily:"inherit",outline:"none"}}/>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{padding:"8px 14px",fontSize:10,color:"#4a6080",borderTop:"1px solid #1e2d4a"}}>
+                💾 Los cambios se guardan automáticamente · Se aplican como criterio #7 en el Ranking Global
+              </div>
+            </div>
+          </div>
         )}
 
       </main>
