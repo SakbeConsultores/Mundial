@@ -416,6 +416,91 @@ function slotLabel(slot) {
   return slot;
 }
 
+
+// ─────────────────────────────────────────────
+// GLOBAL RANKING (FIFA tiebreaker rules 1-6)
+// ─────────────────────────────────────────────
+function calcGlobalRanking(results) {
+  // Build stats for all 48 teams
+  const stats = {};
+  Object.values(GROUPS).flat().forEach(t => {
+    stats[t] = {code:t, pts:0, pj:0, pg:0, pe:0, pp:0, gf:0, gc:0, dg:0, group:""};
+  });
+  Object.entries(GROUPS).forEach(([g, teams]) => {
+    teams.forEach(t => { stats[t].group = g; });
+  });
+
+  // Process all group matches
+  GROUP_MATCHES.forEach(m => {
+    const r = results[m.id];
+    if (!r || r.homeGoals === "" || r.awayGoals === "") return;
+    const hg = parseInt(r.homeGoals), ag = parseInt(r.awayGoals);
+    if (isNaN(hg) || isNaN(ag)) return;
+    const ht = stats[m.home], at = stats[m.away];
+    if (!ht || !at) return;
+    ht.pj++; at.pj++;
+    ht.gf += hg; ht.gc += ag; ht.dg += hg - ag;
+    at.gf += ag; at.gc += hg; at.dg += ag - hg;
+    if (hg > ag) { ht.pts += 3; ht.pg++; at.pp++; }
+    else if (ag > hg) { at.pts += 3; at.pg++; ht.pp++; }
+    else { ht.pts++; at.pts++; ht.pe++; at.pe++; }
+  });
+
+  const teams = Object.values(stats);
+
+  // H2H comparison between a set of tied teams
+  function h2hStats(tiedCodes) {
+    const h = {};
+    tiedCodes.forEach(c => { h[c] = {pts:0, gf:0, gc:0, dg:0}; });
+    GROUP_MATCHES.forEach(m => {
+      if (!tiedCodes.includes(m.home) || !tiedCodes.includes(m.away)) return;
+      const r = results[m.id];
+      if (!r || r.homeGoals === "" || r.awayGoals === "") return;
+      const hg = parseInt(r.homeGoals), ag = parseInt(r.awayGoals);
+      if (isNaN(hg) || isNaN(ag)) return;
+      h[m.home].gf += hg; h[m.home].gc += ag; h[m.home].dg += hg - ag;
+      h[m.away].gf += ag; h[m.away].gc += hg; h[m.away].dg += ag - hg;
+      if (hg > ag) { h[m.home].pts += 3; }
+      else if (ag > hg) { h[m.away].pts += 3; }
+      else { h[m.home].pts++; h[m.away].pts++; }
+    });
+    return h;
+  }
+
+  // Sort with FIFA tiebreakers 1-6
+  function fifaSort(list) {
+    if (list.length <= 1) return list;
+    return list.sort((a, b) => {
+      // 1. Points
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      // 2. Goal difference
+      if (b.dg !== a.dg) return b.dg - a.dg;
+      // 3. Goals for
+      if (b.gf !== a.gf) return b.gf - a.gf;
+      // 4-6. H2H (only meaningful within same group)
+      if (a.group === b.group) {
+        const tiedCodes = list
+          .filter(t => t.pts === a.pts && t.dg === a.dg && t.gf === a.gf && t.group === a.group)
+          .map(t => t.code);
+        if (tiedCodes.length >= 2 && tiedCodes.includes(a.code) && tiedCodes.includes(b.code)) {
+          const h = h2hStats(tiedCodes);
+          const ha = h[a.code], hb = h[b.code];
+          // 4. H2H points
+          if (hb.pts !== ha.pts) return hb.pts - ha.pts;
+          // 5. H2H goal difference
+          if (hb.dg !== ha.dg) return hb.dg - ha.dg;
+          // 6. H2H goals for
+          if (hb.gf !== ha.gf) return hb.gf - ha.gf;
+        }
+      }
+      return 0;
+    });
+  }
+
+  // Sort within each group first (for group context), then global
+  return fifaSort(teams);
+}
+
 // ─────────────────────────────────────────────
 // APP
 // ─────────────────────────────────────────────
@@ -455,6 +540,7 @@ export default function App() {
 
   const standings=useMemo(()=>allStandings(results),[results]);
   const knockoutWinners=useMemo(()=>computeKnockout(results,standings),[results,standings]);
+  const globalRanking=useMemo(()=>calcGlobalRanking(results),[results]);
 
   const filtered=filterGroup==="Todos"?GROUP_MATCHES:GROUP_MATCHES.filter(m=>m.group===filterGroup);
 
@@ -505,94 +591,21 @@ export default function App() {
         {tab==="grupos"&&(
           <div>
             <SectionTitle>Grupos del Torneo</SectionTitle>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:16}}>
               {Object.entries(GROUPS).map(([g,teams])=>{
                 const st=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results);
                 const done=groupComplete(g,results);
                 return(
                   <div key={g} style={{background:"#0f1a2e",border:"1px solid #1e2d4a",borderRadius:8,overflow:"hidden"}}>
-                    <div style={{background:"#c9a227",color:"#0a0f1e",padding:"7px 14px"}}>
+                    <div style={{background:"#0d1828",padding:"8px 14px",borderBottom:"2px solid #c9a227"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <span style={{fontSize:20,fontWeight:900,letterSpacing:1}}>GRUPO {g}</span>
-                        {done&&<span style={{fontSize:10,fontWeight:700,background:"#0a0f1e",color:"#c9a227",padding:"2px 6px",borderRadius:3}}>COMPLETO</span>}
+                        <span style={{fontSize:16,fontWeight:800,letterSpacing:2,color:"#c9a227"}}>GRUPO {g}</span>
+                        {done&&<span style={{fontSize:10,fontWeight:700,background:"#c9a227",color:"#0a0f1e",padding:"2px 6px",borderRadius:3}}>COMPLETO</span>}
                       </div>
-                      <div style={{fontSize:9,letterSpacing:.5,color:"#0a0f1e",opacity:.75,marginTop:2}}>
+                      <div style={{fontSize:9,letterSpacing:.5,color:"#6a8aaa",marginTop:3}}>
                         📍 {GROUP_CITIES[g]?.join(" · ")}
                       </div>
-                    </div>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                      <thead>
-                        <tr style={{borderBottom:"1px solid #1e2d4a",color:"#8899bb",fontSize:10}}>
-                          <th style={{padding:"5px 12px",textAlign:"left"}}>EQUIPO</th>
-                          <th style={{padding:"5px 6px",textAlign:"center"}}>PJ</th>
-                          <th style={{padding:"5px 6px",textAlign:"center"}}>PTS</th>
-                          <th style={{padding:"5px 6px",textAlign:"center"}}>DG</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {st.map((row,i)=>(
-                          <tr key={row.code} style={{borderBottom:"1px solid #0d1828",background:i<2?"rgba(201,162,39,0.07)":"transparent"}}>
-                            <td style={{padding:"6px 12px"}}>
-                              <div style={{display:"flex",alignItems:"center",gap:7}}>
-                                <span style={{width:16,height:16,borderRadius:"50%",background:i===0?"#c9a227":i===1?"#4fc3f7":"#2a3a55",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:i<2?"#0a0f1e":"#8899bb",flexShrink:0}}>{i+1}</span>
-                                <span style={{fontSize:16}}>{FLAGS[row.code]}</span>
-                                <span style={{fontWeight:600,fontSize:13}}>{row.code}</span>
-                              </div>
-                            </td>
-                            <td style={{padding:"6px",textAlign:"center",color:"#aab",fontSize:13}}>{row.pj}</td>
-                            <td style={{padding:"6px",textAlign:"center",fontWeight:700,color:"#c9a227",fontSize:14}}>{row.pts}</td>
-                            <td style={{padding:"6px",textAlign:"center",color:row.dg>0?"#4fc3f7":row.dg<0?"#ef5350":"#aab",fontSize:13}}>{row.dg>0?"+":""}{row.dg}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ── PARTIDOS ── */}
-        {tab==="partidos"&&(
-          <div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
-              <SectionTitle style={{margin:0}}>Fase de Grupos</SectionTitle>
-              <select value={filterGroup} onChange={e=>setFilterGroup(e.target.value)}
-                style={{background:"#0f1a2e",color:"#e8eaf6",border:"1px solid #1e2d4a",borderRadius:4,padding:"6px 12px",fontFamily:"inherit",fontSize:13}}>
-                <option value="Todos">Todos los grupos</option>
-                {Object.keys(GROUPS).map(g=><option key={g} value={g}>Grupo {g}</option>)}
-              </select>
-            </div>
-            {(()=>{
-              const byDate={};
-              filtered.forEach(m=>{if(!byDate[m.date])byDate[m.date]=[];byDate[m.date].push(m);});
-              return Object.entries(byDate).sort(([a],[b])=>a.localeCompare(b)).map(([date,ms])=>(
-                <div key={date} style={{marginBottom:20}}>
-                  <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#c9a227",borderBottom:"1px solid #1e2d4a",paddingBottom:5,marginBottom:10}}>
-                    {new Date(date+"T12:00:00").toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:8}}>
-                    {ms.map(m=><MatchCard key={m.id} match={m} result={results[m.id]} onSet={setGoals}/>)}
-                  </div>
-                </div>
-              ));
-            })()}
-          </div>
-        )}
-
-        {/* ── POSICIONES ── */}
-        {tab==="posiciones"&&(
-          <div>
-            <SectionTitle>Tabla de Posiciones</SectionTitle>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:16}}>
-              {Object.entries(GROUPS).map(([g,teams])=>{
-                const st=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results);
-                return(
-                  <div key={g} style={{background:"#0f1a2e",border:"1px solid #1e2d4a",borderRadius:8,overflow:"hidden"}}>
-                    <div style={{background:"#0d1828",padding:"8px 14px",borderBottom:"2px solid #c9a227",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:15,fontWeight:800,letterSpacing:2,color:"#c9a227"}}>GRUPO {g}</span>
-                      <span style={{fontSize:10,color:"#8899bb"}}>{teams.join(" · ")}</span>
+                      <div style={{fontSize:10,color:"#4a6080",marginTop:2}}>{teams.join(" · ")}</div>
                     </div>
                     <div style={{overflowX:"auto"}}>
                       <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:320}}>
@@ -632,6 +645,91 @@ export default function App() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ── PARTIDOS ── */}
+        {tab==="partidos"&&(
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
+              <SectionTitle style={{margin:0}}>Fase de Grupos</SectionTitle>
+              <select value={filterGroup} onChange={e=>setFilterGroup(e.target.value)}
+                style={{background:"#0f1a2e",color:"#e8eaf6",border:"1px solid #1e2d4a",borderRadius:4,padding:"6px 12px",fontFamily:"inherit",fontSize:13}}>
+                <option value="Todos">Todos los grupos</option>
+                {Object.keys(GROUPS).map(g=><option key={g} value={g}>Grupo {g}</option>)}
+              </select>
+            </div>
+            {(()=>{
+              const byDate={};
+              filtered.forEach(m=>{if(!byDate[m.date])byDate[m.date]=[];byDate[m.date].push(m);});
+              return Object.entries(byDate).sort(([a],[b])=>a.localeCompare(b)).map(([date,ms])=>(
+                <div key={date} style={{marginBottom:20}}>
+                  <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#c9a227",borderBottom:"1px solid #1e2d4a",paddingBottom:5,marginBottom:10}}>
+                    {new Date(date+"T12:00:00").toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:8}}>
+                    {ms.map(m=><MatchCard key={m.id} match={m} result={results[m.id]} onSet={setGoals}/>)}
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        )}
+
+        {/* ── POSICIONES ── */}
+        {tab==="posiciones"&&(
+          <div>
+            <SectionTitle>Ranking Global — 48 Equipos</SectionTitle>
+            <div style={{fontSize:11,color:"#6a8aaa",marginBottom:12}}>
+              Desempate: PTS → DG → GF → H2H PTS → H2H DG → H2H GF
+            </div>
+            <div style={{background:"#0f1a2e",border:"1px solid #1e2d4a",borderRadius:8,overflow:"hidden"}}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:380}}>
+                  <thead>
+                    <tr style={{borderBottom:"2px solid #c9a227",color:"#8899bb",fontSize:10,background:"#0d1828"}}>
+                      {["#","EQUIPO","GRP","PJ","PG","PE","PP","GF","GC","DG","PTS"].map(h=>(
+                        <th key={h} style={{padding:"8px 6px",textAlign:h==="EQUIPO"?"left":"center",whiteSpace:"nowrap",letterSpacing:1}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {globalRanking.map((row,i)=>{
+                      const rowBg = i<2?"rgba(201,162,39,0.08)":i<24?"rgba(79,195,247,0.04)":"transparent";
+                      const rankColor = i===0?"#c9a227":i<3?"#4fc3f7":i<8?"#7a9ab8":"#4a6080";
+                      const rankBg = i===0?"#c9a227":i<3?"rgba(79,195,247,.2)":i<8?"rgba(122,154,184,.15)":"#1e2d4a";
+                      const rankTextColor = i===0?"#0a0f1e":i<3?"#4fc3f7":i<8?"#7a9ab8":"#4a6080";
+                      return(
+                        <tr key={row.code} style={{borderBottom:"1px solid #0d1828",background:rowBg}}>
+                          <td style={{padding:"7px 8px",textAlign:"center"}}>
+                            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,fontSize:11,fontWeight:700,background:rankBg,color:rankTextColor}}>{i+1}</span>
+                          </td>
+                          <td style={{padding:"7px 6px"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{fontSize:16}}>{FLAGS[row.code]}</span>
+                              <div>
+                                <div style={{fontWeight:700,fontSize:12}}>{row.code}</div>
+                                <div style={{fontSize:9,color:"#8899bb",lineHeight:1}}>{TEAM_NAMES[row.code]}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{padding:"7px 6px",textAlign:"center",fontSize:11,color:"#6a8aaa",fontWeight:700}}>{row.group}</td>
+                          {[row.pj,row.pg,row.pe,row.pp,row.gf,row.gc].map((v,vi)=>(
+                            <td key={vi} style={{padding:"7px 6px",textAlign:"center",color:"#ccc",fontSize:12}}>{v}</td>
+                          ))}
+                          <td style={{padding:"7px 6px",textAlign:"center",fontWeight:600,fontSize:12,color:row.dg>0?"#4fc3f7":row.dg<0?"#ef5350":"#aab"}}>{row.dg>0?"+":""}{row.dg}</td>
+                          <td style={{padding:"7px 6px",textAlign:"center",fontWeight:800,fontSize:15,color:"#c9a227"}}>{row.pts}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{padding:"8px 14px",fontSize:10,color:"#4a6080",borderTop:"1px solid #1e2d4a",display:"flex",gap:16,flexWrap:"wrap"}}>
+                <span>🟡 Top 1-2 por grupo</span>
+                <span style={{color:"#4fc3f7"}}>🔵 Posibles clasificados</span>
+              </div>
             </div>
           </div>
         )}
