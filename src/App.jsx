@@ -36,6 +36,17 @@ const FLAGS = {
   POR:"🇵🇹",COD:"🇨🇩",UZB:"🇺🇿",COL:"🇨🇴",ENG:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",CRO:"🇭🇷",GHA:"🇬🇭",PAN:"🇵🇦",
 };
 
+// FIFA Ranking (junio 2026) — menor número = mejor posición
+const FIFA_RANK = {
+  ARG:1, ESP:2, FRA:3, ENG:4, BRA:5, POR:6, NED:7, BEL:8,
+  GER:9, CRO:10, MAR:11, COL:12, URU:13, MEX:14, USA:15, SUI:16,
+  SEN:17, JPN:18, IRN:19, ECU:20, KOR:21, AUT:22, EGY:23, CAN:24,
+  NOR:25, SWE:26, AUS:27, ALG:28, CZE:29, TUN:30, PAR:31, TUR:32,
+  SCO:33, CIV:35, QAT:36, KSA:37, BIH:38, GHA:39, PAN:40,
+  RSA:41, JOR:42, UZB:43, IRQ:44, COD:45, CPV:46, HAI:47, CUW:48,
+};
+
+
 
 
 // Format date for display
@@ -497,6 +508,10 @@ function calcGlobalRanking(results, discipline={}) {
       const da = discipline[a.code]?.pts ?? 0;
       const db = discipline[b.code]?.pts ?? 0;
       if (da !== db) return da - db;
+      // 8. Ranking FIFA (menor número = mejor)
+      const ra = FIFA_RANK[a.code] ?? 99;
+      const rb = FIFA_RANK[b.code] ?? 99;
+      if (ra !== rb) return ra - rb;
       return 0;
     });
   }
@@ -705,13 +720,13 @@ export default function App() {
           <div>
             <SectionTitle>Ranking Global — 48 Equipos</SectionTitle>
             <div style={{fontSize:11,color:"#6a8aaa",marginBottom:12}}>
-              Desempate: PTS → DG → GF → H2H PTS → H2H DG → H2H GF
+              Desempate: PTS → DG → GF → H2H PTS → H2H DG → H2H GF → Disciplina → Ranking FIFA
             </div>
             <div style={{background:"#0f1a2e",border:"1px solid #1e2d4a",borderRadius:8,overflow:"hidden"}}>
               <div style={{overflowX:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:16,minWidth:380}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:380}}>
                   <thead>
-                    <tr style={{borderBottom:"2px solid #c9a227",color:"#8899bb",fontSize:14,background:"#0d1828"}}>
+                    <tr style={{borderBottom:"2px solid #c9a227",color:"#8899bb",fontSize:10,background:"#0d1828"}}>
                       {["#","EQUIPO","GRP","PJ","PG","PE","PP","GF","GC","DG","PTS"].map(h=>(
                         <th key={h} style={{padding:"8px 6px",textAlign:h==="EQUIPO"?"left":"center",whiteSpace:"nowrap",letterSpacing:1}}>{h}</th>
                       ))}
@@ -733,7 +748,7 @@ export default function App() {
                               <span style={{fontSize:16}}>{FLAGS[row.code]}</span>
                               <div>
                                 <div style={{fontWeight:700,fontSize:12}}>{row.code}</div>
-                                <div style={{fontSize:14,color:"#8899bb",lineHeight:1}}>{TEAM_NAMES[row.code]}</div>
+                                <div style={{fontSize:9,color:"#8899bb",lineHeight:1}}>{TEAM_NAMES[row.code]}</div>
                               </div>
                             </div>
                           </td>
