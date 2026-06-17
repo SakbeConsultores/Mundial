@@ -709,9 +709,9 @@ export default function App() {
             </div>
             <div style={{background:"#0f1a2e",border:"1px solid #1e2d4a",borderRadius:8,overflow:"hidden"}}>
               <div style={{overflowX:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:380}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:16,minWidth:380}}>
                   <thead>
-                    <tr style={{borderBottom:"2px solid #c9a227",color:"#8899bb",fontSize:10,background:"#0d1828"}}>
+                    <tr style={{borderBottom:"2px solid #c9a227",color:"#8899bb",fontSize:14,background:"#0d1828"}}>
                       {["#","EQUIPO","GRP","PJ","PG","PE","PP","GF","GC","DG","PTS"].map(h=>(
                         <th key={h} style={{padding:"8px 6px",textAlign:h==="EQUIPO"?"left":"center",whiteSpace:"nowrap",letterSpacing:1}}>{h}</th>
                       ))}
@@ -733,7 +733,7 @@ export default function App() {
                               <span style={{fontSize:16}}>{FLAGS[row.code]}</span>
                               <div>
                                 <div style={{fontWeight:700,fontSize:12}}>{row.code}</div>
-                                <div style={{fontSize:9,color:"#8899bb",lineHeight:1}}>{TEAM_NAMES[row.code]}</div>
+                                <div style={{fontSize:14,color:"#8899bb",lineHeight:1}}>{TEAM_NAMES[row.code]}</div>
                               </div>
                             </div>
                           </td>
