@@ -291,21 +291,41 @@ function groupComplete(g,results) {
   });
 }
 
-function resolveSlot(slot,standings,kw,results) {
+// Returns {code, provisional} or null
+function resolveSlotFull(slot,standings,kw,results) {
   if(/^[123][A-L]$/.test(slot)){
     const pos=parseInt(slot[0])-1,g=slot[1];
-    if(!groupComplete(g,results)) return null;
-    return standings[g]?.[pos]?.code||null;
+    const st=standings[g];
+    if(!st||!st[pos]||st[pos].pj===0) return null;
+    const provisional=!groupComplete(g,results);
+    return {code:st[pos].code, provisional};
   }
   if(/^3[A-L]{2,}$/.test(slot)){
     const groups=slot.slice(1).split("");
-    if(!groups.every(g=>groupComplete(g,results))) return null;
-    const thirds=groups.map(g=>{const s=standings[g];if(!s||s.length<3)return null;return{code:s[2].code,group:g,...s[2]};}).filter(Boolean).sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf||a.group.localeCompare(b.group));
-    return thirds[0]?.code||null;
+    const thirds=groups.map(g=>{
+      const s=standings[g];
+      if(!s||s.length<3||s[2].pj===0) return null;
+      return{code:s[2].code,group:g,...s[2]};
+    }).filter(Boolean).sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf||a.group.localeCompare(b.group));
+    if(thirds.length===0) return null;
+    const provisional=!groups.every(g=>groupComplete(g,results));
+    return {code:thirds[0].code, provisional};
   }
-  if(/^W\d+$/.test(slot)) return kw[parseInt(slot.slice(1))]?.winner||null;
-  if(/^L\d+$/.test(slot)) return kw[parseInt(slot.slice(1))]?.loser||null;
+  if(/^W\d+$/.test(slot)){
+    const w=kw[parseInt(slot.slice(1))];
+    return w?{code:w.winner,provisional:false}:null;
+  }
+  if(/^L\d+$/.test(slot)){
+    const w=kw[parseInt(slot.slice(1))];
+    return w?{code:w.loser,provisional:false}:null;
+  }
   return null;
+}
+
+// Backward compat — returns just code
+function resolveSlot(slot,standings,kw,results) {
+  const r=resolveSlotFull(slot,standings,kw,results);
+  return r?.code||null;
 }
 
 function computeKnockout(results,standings) {
@@ -760,9 +780,12 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults}) {
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
         {current.matches.map(m=>{
-          const homeTeam=resolveSlot(m.homeSlot,standings,knockoutWinners,groupResults);
-          const awayTeam=resolveSlot(m.awaySlot,standings,knockoutWinners,groupResults);
-          return <KOMatchCard key={m.id} match={m} homeTeam={homeTeam} awayTeam={awayTeam} result={results[m.id]} onSet={onSet}/>;
+          const homeRes=resolveSlotFull(m.homeSlot,standings,knockoutWinners,groupResults);
+          const awayRes=resolveSlotFull(m.awaySlot,standings,knockoutWinners,groupResults);
+          return <KOMatchCard key={m.id} match={m}
+            homeTeam={homeRes?.code||null} homeProv={homeRes?.provisional||false}
+            awayTeam={awayRes?.code||null} awayProv={awayRes?.provisional||false}
+            result={results[m.id]} onSet={onSet}/>;
         })}
       </div>
     </div>
@@ -963,22 +986,23 @@ function MatchCard({match,result,onSet}) {
   );
 }
 
-function KOMatchCard({match,homeTeam,awayTeam,result,onSet}) {
+function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,result,onSet}) {
   const resolved=!!homeTeam&&!!awayTeam;
+  const provisional=(homeProv||awayProv)&&resolved;
   const played=result.homeGoals!==""&&result.awayGoals!=="";
   const hg=parseInt(result.homeGoals),ag=parseInt(result.awayGoals);
   const hWin=played&&hg>ag,aWin=played&&ag>hg,draw=played&&hg===ag;
   const t=convertTime(match.time);
   return(
-    <div style={{background:resolved?C.card:"#f8fafc",border:`1px solid ${played?C.gold+"88":resolved?C.blue+"44":C.cardBorder}`,borderRadius:8,padding:"10px 12px",opacity:resolved?1:0.6,boxShadow:C.shadow}}>
+    <div style={{background:resolved?C.card:"#f8fafc",border:`1px solid ${played?C.gold+"88":provisional?"#f59e0b66":resolved?C.blue+"44":C.cardBorder}`,borderRadius:8,padding:"10px 12px",opacity:resolved?1:0.6,boxShadow:C.shadow}}>
       <div style={{marginBottom:7}}>
         <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
           <div>
             <span style={{color:C.gold,fontWeight:700}}>{match.label||`P${match.id}`}</span>
             <span style={{color:C.textMute,marginLeft:5}}>📍{MATCH_CITY[match.id]}</span>
           </div>
-          <span style={{background:played?"#dcfce7":resolved?C.blueLight:"#f1f5f9",borderRadius:3,padding:"1px 5px",color:played?C.green:resolved?C.blue:C.textMute,fontWeight:600,fontSize:10}}>
-            {played?"FIN":resolved?"LISTO":"POR DEF."}
+          <span style={{background:played?"#dcfce7":provisional?"#fffbeb":resolved?C.blueLight:"#f1f5f9",borderRadius:3,padding:"1px 5px",color:played?C.green:provisional?"#92400e":resolved?C.blue:C.textMute,fontWeight:600,fontSize:10}}>
+            {played?"FIN":provisional?"PROV.":resolved?"LISTO":"POR DEF."}
           </span>
         </div>
         <div style={{fontSize:10,marginTop:2}}>
@@ -992,13 +1016,13 @@ function KOMatchCard({match,homeTeam,awayTeam,result,onSet}) {
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
-        <TeamBlock code={homeTeam} fallback={slotLabel(match.homeSlot)} win={hWin} align="right"/>
+        <TeamBlock code={homeTeam} fallback={slotLabel(match.homeSlot)} win={hWin} align="right" prov={homeProv}/>
         <div style={{display:"flex",alignItems:"center",gap:3}}>
-          <ScoreInput value={result.homeGoals} onChange={v=>onSet(match.id,"homeGoals",v)} win={hWin} draw={draw} played={played} disabled={!resolved}/>
+          <ScoreInput value={result.homeGoals} onChange={v=>onSet(match.id,"homeGoals",v)} win={hWin} draw={draw} played={played} disabled={!resolved||provisional}/>
           <span style={{fontSize:14,color:C.textMute,fontWeight:700}}>:</span>
-          <ScoreInput value={result.awayGoals} onChange={v=>onSet(match.id,"awayGoals",v)} win={aWin} draw={draw} played={played} disabled={!resolved}/>
+          <ScoreInput value={result.awayGoals} onChange={v=>onSet(match.id,"awayGoals",v)} win={aWin} draw={draw} played={played} disabled={!resolved||provisional}/>
         </div>
-        <TeamBlock code={awayTeam} fallback={slotLabel(match.awaySlot)} win={aWin} align="left"/>
+        <TeamBlock code={awayTeam} fallback={slotLabel(match.awaySlot)} win={aWin} align="left" prov={awayProv}/>
       </div>
       {draw&&played&&(
         <div style={{textAlign:"center",marginTop:6,fontSize:10,color:"#92400e",background:"#fffbeb",borderRadius:4,padding:"3px 6px"}}>
@@ -1009,7 +1033,7 @@ function KOMatchCard({match,homeTeam,awayTeam,result,onSet}) {
   );
 }
 
-function TeamBlock({code,fallback,win,align}) {
+function TeamBlock({code,fallback,win,align,prov}) {
   return(
     <div style={{flex:1,textAlign:align,minWidth:0}}>
       <div style={{fontSize:20,lineHeight:1.1}}>{code?FLAGS[code]:"🏳️"}</div>
@@ -1017,6 +1041,7 @@ function TeamBlock({code,fallback,win,align}) {
         {code||fallback||"TBD"}
       </div>
       {code&&<div style={{fontSize:9,color:C.textMute,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{TEAM_NAMES[code]}</div>}
+      {prov&&code&&<div style={{fontSize:8,fontWeight:700,color:"#92400e",background:"#fffbeb",borderRadius:2,padding:"1px 3px",display:"inline-block",marginTop:1}}>PROV.</div>}
     </div>
   );
 }
