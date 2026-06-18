@@ -675,6 +675,14 @@ export default function App() {
   const knockoutWinners=useMemo(()=>computeKnockout(results,standings,bestThirds),[results,standings,bestThirds]);
   const globalRanking=useMemo(()=>calcGlobalRanking(results,discipline),[results,discipline]);
   const stats=useMemo(()=>calcStats(results,discipline),[results,discipline]);
+  // Clasificación REAL (misma fuente que el bracket): 1°/2° de cada grupo + 8 mejores terceros.
+  // "directo" = 1° o 2° de grupo; "tercero" = mejor 3° seleccionado.
+  const qualifiedInfo=useMemo(()=>{
+    const info={};
+    Object.values(standings).forEach(st=>{ if(st[0])info[st[0].code]="directo"; if(st[1])info[st[1].code]="directo"; });
+    Object.values(bestThirds).forEach(b=>{ if(b&&b.code)info[b.code]="tercero"; });
+    return info;
+  },[standings,bestThirds]);
   const filtered=filterGroup==="Todos"?GROUP_MATCHES:GROUP_MATCHES.filter(m=>m.group===filterGroup);
 
   const TABS=[["grupos","GRUPOS"],["partidos","PARTIDOS"],["posiciones","POSICIONES"],["bracket","BRACKET"],["estadisticas","ESTADÍSTICAS"],["disciplina","DISCIPLINA"]];
@@ -728,7 +736,7 @@ export default function App() {
             <SectionTitle>Grupos del Torneo</SectionTitle>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:16}}>
               {Object.entries(GROUPS).map(([g,teams])=>{
-                const st=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results);
+                const st=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results,discipline);
                 const done=groupComplete(g,results);
                 return(
                   <div key={g} style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:8,overflow:"hidden",boxShadow:C.shadow}}>
@@ -814,8 +822,14 @@ export default function App() {
         {tab==="posiciones"&&(
           <div>
             <SectionTitle>Ranking Global — 48 Equipos</SectionTitle>
-            <div style={{fontSize:11,color:C.textMute,marginBottom:12}}>
-              Desempate: PTS → DG → GF → H2H PTS → H2H DG → H2H GF → Disciplina → Ranking FIFA
+            <div style={{fontSize:11,color:C.textMute,marginBottom:6}}>
+              Ranking de poder de los 48 equipos. Desempate: PTS → DG → GF → H2H (PTS/DG/GF) → Disciplina → Ranking FIFA
+            </div>
+            {/* Leyenda: el resaltado refleja la clasificación REAL (igual que el bracket), no la posición en esta lista */}
+            <div style={{fontSize:11,color:C.textSub,marginBottom:12,display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span style={{width:12,height:12,borderRadius:3,background:C.goldLight,border:`1px solid ${C.gold}`}}/>1° o 2° de grupo (clasifica directo)</span>
+              <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span style={{width:12,height:12,borderRadius:3,background:C.blueLight,border:`1px solid ${C.blue}`}}/>Mejor 3° (clasifica)</span>
+              <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span style={{width:12,height:12,borderRadius:3,background:"#f1f5f9",border:`1px solid ${C.cardBorder}`}}/>No clasifica (provisional)</span>
             </div>
             <div style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:8,overflow:"hidden",boxShadow:C.shadow}}>
               <div style={{overflowX:"auto"}}>
@@ -828,10 +842,12 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {globalRanking.map((row,i)=>(
-                      <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:i<2?C.goldLight+"55":i<24?C.blueLight+"33":"transparent"}}>
+                    {globalRanking.map((row,i)=>{
+                      const q=qualifiedInfo[row.code]; // "directo" | "tercero" | undefined
+                      return (
+                      <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:q==="directo"?C.goldLight+"55":q==="tercero"?C.blueLight+"55":"transparent"}}>
                         <td style={{padding:"7px 8px",textAlign:"center"}}>
-                          <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,fontSize:11,fontWeight:700,background:i===0?C.gold:i<3?C.blueLight:"#f1f5f9",color:i===0?C.header:i<3?C.blue:C.textMute}}>{i+1}</span>
+                          <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,fontSize:11,fontWeight:700,background:q==="directo"?C.gold:q==="tercero"?C.blueLight:"#f1f5f9",color:q==="directo"?C.header:q==="tercero"?C.blue:C.textMute}}>{i+1}</span>
                         </td>
                         <td style={{padding:"7px 6px"}}>
                           <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -849,7 +865,7 @@ export default function App() {
                         <td style={{padding:"7px 6px",textAlign:"center",fontWeight:600,fontSize:12,color:row.dg>0?C.blue:row.dg<0?C.red:C.textSub}}>{row.dg>0?"+":""}{row.dg}</td>
                         <td style={{padding:"7px 6px",textAlign:"center",fontWeight:800,fontSize:15,color:C.gold}}>{row.pts}</td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               </div>
