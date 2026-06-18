@@ -145,14 +145,14 @@ const GROUP_MATCHES = [
   {id:22,group:"L",date:"2026-06-17",time:"16:00",home:"ENG",away:"CRO"},
   {id:23,group:"K",date:"2026-06-17",time:"13:00",home:"POR",away:"COD"},
   {id:24,group:"K",date:"2026-06-17",time:"22:00",home:"UZB",away:"COL"},
-  {id:25,group:"A",date:"2026-06-18",time:"12:00",home:"CZE",away:"RSA"},
-  {id:26,group:"B",date:"2026-06-18",time:"15:00",home:"SUI",away:"BIH"},
+  {id:25,group:"A",date:"2026-06-17",time:"12:00",home:"CZE",away:"RSA"},
+  {id:26,group:"B",date:"2026-06-17",time:"15:00",home:"SUI",away:"BIH"},
   {id:27,group:"B",date:"2026-06-18",time:"18:00",home:"CAN",away:"QAT"},
-  {id:28,group:"A",date:"2026-06-18",time:"21:00",home:"MEX",away:"KOR"},
+  {id:28,group:"A",date:"2026-06-17",time:"21:00",home:"MEX",away:"KOR"},
   {id:29,group:"C",date:"2026-06-19",time:"20:30",home:"BRA",away:"HAI"},
   {id:30,group:"C",date:"2026-06-19",time:"18:00",home:"SCO",away:"MAR"},
-  {id:31,group:"D",date:"2026-06-19",time:"23:00",home:"TUR",away:"PAR"},
-  {id:32,group:"D",date:"2026-06-19",time:"15:00",home:"USA",away:"AUS"},
+  {id:31,group:"D",date:"2026-06-20",time:"23:00",home:"TUR",away:"PAR"},
+  {id:32,group:"D",date:"2026-06-20",time:"15:00",home:"USA",away:"AUS"},
   {id:33,group:"E",date:"2026-06-20",time:"16:00",home:"GER",away:"CIV"},
   {id:34,group:"E",date:"2026-06-20",time:"20:00",home:"ECU",away:"CUW"},
   {id:35,group:"F",date:"2026-06-20",time:"13:00",home:"NED",away:"SWE"},
@@ -291,8 +291,72 @@ function groupComplete(g,results) {
   });
 }
 
+// FIFA R32 slots that receive best thirds
+const BEST_THIRD_SLOTS = {
+  74:["A","B","C","D","F"],
+  77:["C","D","F","G","H"],
+  79:["C","E","F","H","I"],
+  80:["E","H","I","J","K"],
+  81:["B","E","F","I","J"],
+  82:["A","E","H","I","J"],
+  85:["E","F","G","I","J"],
+  87:["D","E","I","J","L"],
+};
+
+// Assign best thirds to slots using greedy matching (most constrained first)
+// Ensures no team appears in more than one slot
+function assignBestThirds(standings, _discipline={}) {
+  // Get thirds that have played at least 1 match
+  const thirds = Object.entries(standings)
+    .filter(([,st])=>st.length>=3&&st[2].pj>0)
+    .map(([g,st])=>({group:g,...st[2]}))
+    .sort((a,b)=>{
+      // 1. Puntos
+      if(b.pts!==a.pts) return b.pts-a.pts;
+      // 2. Diferencia de goles
+      if(b.dg!==a.dg) return b.dg-a.dg;
+      // 3. Goles a favor
+      if(b.gf!==a.gf) return b.gf-a.gf;
+      // 4. Disciplina (menos puntos = mejor) — discipline viene del closure global
+      const da=_discipline?.[a.code]?.pts??0;
+      const db=_discipline?.[b.code]?.pts??0;
+      if(da!==db) return da-db;
+      // 5. Ranking FIFA
+      const ra=FIFA_RANK[a.code]??99;
+      const rb=FIFA_RANK[b.code]??99;
+      return ra-rb;
+    });
+
+  // Sort slots by number of eligible thirds (most constrained first)
+  const slotEntries = Object.entries(BEST_THIRD_SLOTS)
+    .map(([sid,groups])=>({
+      sid:parseInt(sid),
+      groups,
+      eligible:thirds.filter(t=>groups.includes(t.group))
+    }))
+    .sort((a,b)=>a.eligible.length-b.eligible.length);
+
+  const assignment = {}; // slot_id -> {code, provisional}
+  const usedGroups = new Set();
+
+  slotEntries.forEach(({sid,groups})=>{
+    const available = thirds.filter(t=>groups.includes(t.group)&&!usedGroups.has(t.group));
+    if(available.length>0){
+      const best = available[0];
+      // provisional if not all groups in this slot are complete
+      const provisional = !groups.every(g=>{
+        const st=standings[g];
+        return st&&st.every&&GROUP_MATCHES.filter(m=>m.group===g).every(m=>false); // will use groupComplete
+      });
+      assignment[sid] = {code:best.code, group:best.group};
+      usedGroups.add(best.group);
+    }
+  });
+  return assignment;
+}
+
 // Returns {code, provisional} or null
-function resolveSlotFull(slot,standings,kw,results) {
+function resolveSlotFull(slot,standings,kw,results,bestThirdsCache) {
   if(/^[123][A-L]$/.test(slot)){
     const pos=parseInt(slot[0])-1,g=slot[1];
     const st=standings[g];
@@ -301,15 +365,17 @@ function resolveSlotFull(slot,standings,kw,results) {
     return {code:st[pos].code, provisional};
   }
   if(/^3[A-L]{2,}$/.test(slot)){
-    const groups=slot.slice(1).split("");
-    const thirds=groups.map(g=>{
-      const s=standings[g];
-      if(!s||s.length<3||s[2].pj===0) return null;
-      return{code:s[2].code,group:g,...s[2]};
-    }).filter(Boolean).sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf||a.group.localeCompare(b.group));
-    if(thirds.length===0) return null;
-    const provisional=!groups.every(g=>groupComplete(g,results));
-    return {code:thirds[0].code, provisional};
+    // Find which slot ID this corresponds to
+    const slotGroups = slot.slice(1).split("").sort().join("");
+    const slotId = Object.entries(BEST_THIRD_SLOTS).find(([,groups])=>
+      [...groups].sort().join("")===slotGroups
+    )?.[0];
+    if(!slotId) return null;
+    const assigned = bestThirdsCache?.[parseInt(slotId)];
+    if(!assigned) return null;
+    const groups = BEST_THIRD_SLOTS[parseInt(slotId)];
+    const provisional = !groups.every(g=>groupComplete(g,results));
+    return {code:assigned.code, provisional};
   }
   if(/^W\d+$/.test(slot)){
     const w=kw[parseInt(slot.slice(1))];
@@ -322,21 +388,21 @@ function resolveSlotFull(slot,standings,kw,results) {
   return null;
 }
 
-// Backward compat — returns just code
-function resolveSlot(slot,standings,kw,results) {
-  const r=resolveSlotFull(slot,standings,kw,results);
+// Backward compat
+function resolveSlot(slot,standings,kw,results,bestThirdsCache) {
+  const r=resolveSlotFull(slot,standings,kw,results,bestThirdsCache);
   return r?.code||null;
 }
 
-function computeKnockout(results,standings) {
+function computeKnockout(results,standings,bestThirds={}) {
   const kw={};
   ALL_KO.forEach(m=>{
     const r=results[m.id];
     if(!r||r.homeGoals===""||r.awayGoals==="") return;
     const hg=parseInt(r.homeGoals),ag=parseInt(r.awayGoals);
     if(isNaN(hg)||isNaN(ag)) return;
-    const home=resolveSlot(m.homeSlot,standings,kw,results);
-    const away=resolveSlot(m.awaySlot,standings,kw,results);
+    const home=resolveSlot(m.homeSlot,standings,kw,results,bestThirds);
+    const away=resolveSlot(m.awaySlot,standings,kw,results,bestThirds);
     if(!home||!away) return;
     kw[m.id]={winner:hg>=ag?home:away,loser:hg>=ag?away:home};
   });
@@ -487,7 +553,8 @@ export default function App() {
   };
 
   const standings=useMemo(()=>allStandings(results),[results]);
-  const knockoutWinners=useMemo(()=>computeKnockout(results,standings),[results,standings]);
+  const bestThirds=useMemo(()=>assignBestThirds(standings,discipline),[standings,discipline]);
+  const knockoutWinners=useMemo(()=>computeKnockout(results,standings,bestThirds),[results,standings,bestThirds]);
   const globalRanking=useMemo(()=>calcGlobalRanking(results,discipline),[results,discipline]);
   const stats=useMemo(()=>calcStats(results,discipline),[results,discipline]);
   const filtered=filterGroup==="Todos"?GROUP_MATCHES:GROUP_MATCHES.filter(m=>m.group===filterGroup);
@@ -670,7 +737,7 @@ export default function App() {
 
         {/* ── BRACKET ── */}
         {tab==="bracket"&&(
-          <BracketView standings={standings} knockoutWinners={knockoutWinners} results={results} onSet={setGoals} groupResults={results}/>
+          <BracketView standings={standings} knockoutWinners={knockoutWinners} results={results} onSet={setGoals} groupResults={results} bestThirds={bestThirds}/>
         )}
 
         {/* ── ESTADÍSTICAS ── */}
@@ -754,7 +821,7 @@ export default function App() {
 // ─────────────────────────────────────────────
 // BRACKET VIEW
 // ─────────────────────────────────────────────
-function BracketView({standings,knockoutWinners,results,onSet,groupResults}) {
+function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestThirds}) {
   const [phase,setPhase]=useState("r32");
   const phases=[
     {key:"r32",label:"Dieciseisavos",matches:R32_FIXTURE},
@@ -780,8 +847,8 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults}) {
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
         {current.matches.map(m=>{
-          const homeRes=resolveSlotFull(m.homeSlot,standings,knockoutWinners,groupResults);
-          const awayRes=resolveSlotFull(m.awaySlot,standings,knockoutWinners,groupResults);
+          const homeRes=resolveSlotFull(m.homeSlot,standings,knockoutWinners,groupResults,bestThirds);
+          const awayRes=resolveSlotFull(m.awaySlot,standings,knockoutWinners,groupResults,bestThirds);
           return <KOMatchCard key={m.id} match={m}
             homeTeam={homeRes?.code||null} homeProv={homeRes?.provisional||false}
             awayTeam={awayRes?.code||null} awayProv={awayRes?.provisional||false}
