@@ -101,6 +101,7 @@ const FIFA_RANK = {
   NOR:25,SWE:26,AUS:27,ALG:28,CZE:29,TUN:30,PAR:31,TUR:32,
   SCO:33,CIV:35,QAT:36,KSA:37,BIH:38,GHA:39,PAN:40,
   RSA:41,JOR:42,UZB:43,IRQ:44,COD:45,CPV:46,HAI:47,CUW:48,
+  NZL:85, // Nueva Zelanda (OFC): ranking real FIFA; al ser el más alto, queda último en cualquier empate
 };
 
 const CONFEDERATIONS = {
@@ -297,9 +298,9 @@ function convertTime(t) {
   return {est:t,ecu,cdmx};
 }
 
-function calcGroupStandings(groupTeams,matches,results) {
+function calcGroupStandings(groupTeams,matches,results,discipline={}) {
   const table={};
-  groupTeams.forEach(t=>{table[t]={pts:0,pj:0,pg:0,pe:0,pp:0,gf:0,gc:0,dg:0};});
+  groupTeams.forEach(t=>{table[t]={code:t,pts:0,pj:0,pg:0,pe:0,pp:0,gf:0,gc:0,dg:0};});
   matches.forEach(m=>{
     const r=results[m.id];
     if(!r||r.homeGoals===""||r.awayGoals==="") return;
@@ -312,12 +313,44 @@ function calcGroupStandings(groupTeams,matches,results) {
     else if(ag>hg){at.pts+=3;at.pg++;ht.pp++;}
     else{ht.pts++;at.pts++;ht.pe++;at.pe++;}
   });
-  return Object.entries(table).sort((a,b)=>b[1].pts-a[1].pts||b[1].dg-a[1].dg||b[1].gf-a[1].gf).map(([code,s])=>({code,...s}));
+  const teams=Object.values(table);
+  // Enfrentamiento directo (head-to-head): solo cuenta los partidos entre los equipos empatados.
+  function h2h(tiedCodes){
+    const h={};tiedCodes.forEach(c=>{h[c]={pts:0,gf:0,gc:0,dg:0};});
+    matches.forEach(m=>{
+      if(!tiedCodes.includes(m.home)||!tiedCodes.includes(m.away)) return;
+      const r=results[m.id];if(!r||r.homeGoals===""||r.awayGoals==="") return;
+      const hg=parseInt(r.homeGoals),ag=parseInt(r.awayGoals);if(isNaN(hg)||isNaN(ag)) return;
+      h[m.home].gf+=hg;h[m.home].gc+=ag;h[m.home].dg+=hg-ag;h[m.away].gf+=ag;h[m.away].gc+=hg;h[m.away].dg+=ag-hg;
+      if(hg>ag)h[m.home].pts+=3;else if(ag>hg)h[m.away].pts+=3;else{h[m.home].pts++;h[m.away].pts++;}
+    });
+    return h;
+  }
+  // Cadena oficial de desempate (igual que el Ranking Global):
+  return teams.sort((a,b)=>{
+    // 1) Puntos  2) Diferencia de goles  3) Goles a favor (en todo el grupo)
+    if(b.pts!==a.pts) return b.pts-a.pts;
+    if(b.dg!==a.dg) return b.dg-a.dg;
+    if(b.gf!==a.gf) return b.gf-a.gf;
+    // 4-6) Entre los empatados: PTS → DG → GF del enfrentamiento directo
+    const tied=teams.filter(t=>t.pts===a.pts&&t.dg===a.dg&&t.gf===a.gf).map(t=>t.code);
+    if(tied.length>=2&&tied.includes(a.code)&&tied.includes(b.code)){
+      const hh=h2h(tied);const ha=hh[a.code],hb=hh[b.code];
+      if(hb.pts!==ha.pts) return hb.pts-ha.pts;
+      if(hb.dg!==ha.dg) return hb.dg-ha.dg;
+      if(hb.gf!==ha.gf) return hb.gf-ha.gf;
+    }
+    // 7) Fair play (disciplina): menos puntos de tarjetas es mejor
+    const da=discipline[a.code]?.pts??0,db=discipline[b.code]?.pts??0;
+    if(da!==db) return da-db;
+    // 8) Ranking FIFA: número más bajo = mejor
+    return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
+  });
 }
 
-function allStandings(results) {
+function allStandings(results,discipline={}) {
   const out={};
-  Object.entries(GROUPS).forEach(([g,teams])=>{out[g]=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results);});
+  Object.entries(GROUPS).forEach(([g,teams])=>{out[g]=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results,discipline);});
   return out;
 }
 
@@ -637,7 +670,7 @@ export default function App() {
     }
   };
 
-  const standings=useMemo(()=>allStandings(results),[results]);
+  const standings=useMemo(()=>allStandings(results,discipline),[results,discipline]);
   const bestThirds=useMemo(()=>assignBestThirds(standings,discipline),[standings,discipline]);
   const knockoutWinners=useMemo(()=>computeKnockout(results,standings,bestThirds),[results,standings,bestThirds]);
   const globalRanking=useMemo(()=>calcGlobalRanking(results,discipline),[results,discipline]);
