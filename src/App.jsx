@@ -303,55 +303,39 @@ const BEST_THIRD_SLOTS = {
   87:["D","E","I","J","L"],
 };
 
-// Assign best thirds to slots using greedy matching (most constrained first)
-// Ensures no team appears in more than one slot
+// Assign best thirds to slots in FIFA order: M74→M77→M79→M80→M81→M82→M85→M87
+// Each slot gets the best available third from its eligible groups.
+// Once a group's third is assigned, that group is excluded from remaining slots.
+// Tiebreakers: PTS → DG → GF → Disciplina → Ranking FIFA
 function assignBestThirds(standings, _discipline={}) {
-  // Get thirds that have played at least 1 match
-  const thirds = Object.entries(standings)
+  // Rank all 12 thirds by FIFA criteria
+  const allThirds = Object.entries(standings)
     .filter(([,st])=>st.length>=3&&st[2].pj>0)
     .map(([g,st])=>({group:g,...st[2]}))
     .sort((a,b)=>{
-      // 1. Puntos
       if(b.pts!==a.pts) return b.pts-a.pts;
-      // 2. Diferencia de goles
       if(b.dg!==a.dg) return b.dg-a.dg;
-      // 3. Goles a favor
       if(b.gf!==a.gf) return b.gf-a.gf;
-      // 4. Disciplina (menos puntos = mejor) — discipline viene del closure global
-      const da=_discipline?.[a.code]?.pts??0;
-      const db=_discipline?.[b.code]?.pts??0;
+      const da=_discipline?.[a.code]?.pts??0, db=_discipline?.[b.code]?.pts??0;
       if(da!==db) return da-db;
-      // 5. Ranking FIFA
-      const ra=FIFA_RANK[a.code]??99;
-      const rb=FIFA_RANK[b.code]??99;
-      return ra-rb;
+      return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
     });
 
-  // Sort slots by number of eligible thirds (most constrained first)
-  const slotEntries = Object.entries(BEST_THIRD_SLOTS)
-    .map(([sid,groups])=>({
-      sid:parseInt(sid),
-      groups,
-      eligible:thirds.filter(t=>groups.includes(t.group))
-    }))
-    .sort((a,b)=>a.eligible.length-b.eligible.length);
-
-  const assignment = {}; // slot_id -> {code, provisional}
+  // Process slots in FIFA order
+  const SLOT_ORDER = [74,77,79,80,81,82,85,87];
+  const assignment = {};
   const usedGroups = new Set();
 
-  slotEntries.forEach(({sid,groups})=>{
-    const available = thirds.filter(t=>groups.includes(t.group)&&!usedGroups.has(t.group));
-    if(available.length>0){
-      const best = available[0];
-      // provisional if not all groups in this slot are complete
-      const provisional = !groups.every(g=>{
-        const st=standings[g];
-        return st&&st.every&&GROUP_MATCHES.filter(m=>m.group===g).every(m=>false); // will use groupComplete
-      });
+  SLOT_ORDER.forEach(sid=>{
+    const eligibleGroups = BEST_THIRD_SLOTS[sid];
+    // Find best ranked third whose group is eligible and not yet used
+    const best = allThirds.find(t=>eligibleGroups.includes(t.group)&&!usedGroups.has(t.group));
+    if(best){
       assignment[sid] = {code:best.code, group:best.group};
       usedGroups.add(best.group);
     }
   });
+
   return assignment;
 }
 
