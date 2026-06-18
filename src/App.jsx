@@ -37,6 +37,15 @@ function hasLocalData(results, discipline) {
   return r || d;
 }
 
+// Puntos de conducta (fair play) FIFA Art. 13, derivados de las tarjetas.
+// Aproximación: amarilla = 1, roja = 4 (roja directa). Más puntos = peor; menos = mejor.
+// Nota: con solo el conteo de amarillas/rojas NO se puede distinguir una roja directa (-4)
+// de una roja por doble amarilla (-3) ni el combo amarilla+roja (-5), así que es aproximado.
+function conductPts(d) {
+  if (!d) return 0;
+  return (d.ta || 0) * 1 + (d.tr || 0) * 4;
+}
+
 // ─────────────────────────────────────────────
 // PALETA DÍA
 // ─────────────────────────────────────────────
@@ -326,24 +335,26 @@ function calcGroupStandings(groupTeams,matches,results,discipline={}) {
     });
     return h;
   }
-  // Cadena oficial de desempate (igual que el Ranking Global):
+  // Cadena oficial de desempate — FIFA Artículo 13 (orden correcto):
   return teams.sort((a,b)=>{
-    // 1) Puntos  2) Diferencia de goles  3) Goles a favor (en todo el grupo)
+    // 1) Puntos totales del grupo
     if(b.pts!==a.pts) return b.pts-a.pts;
-    if(b.dg!==a.dg) return b.dg-a.dg;
-    if(b.gf!==a.gf) return b.gf-a.gf;
-    // 4-6) Entre los empatados: PTS → DG → GF del enfrentamiento directo
-    const tied=teams.filter(t=>t.pts===a.pts&&t.dg===a.dg&&t.gf===a.gf).map(t=>t.code);
+    // Paso 1: entre los equipos empatados EN PUNTOS, primero el enfrentamiento directo.
+    const tied=teams.filter(t=>t.pts===a.pts).map(t=>t.code);
     if(tied.length>=2&&tied.includes(a.code)&&tied.includes(b.code)){
       const hh=h2h(tied);const ha=hh[a.code],hb=hh[b.code];
+      // 2) PTS directos  3) DG directa  4) GF directos
       if(hb.pts!==ha.pts) return hb.pts-ha.pts;
       if(hb.dg!==ha.dg) return hb.dg-ha.dg;
       if(hb.gf!==ha.gf) return hb.gf-ha.gf;
     }
-    // 7) Fair play (disciplina): menos puntos de tarjetas es mejor
-    const da=discipline[a.code]?.pts??0,db=discipline[b.code]?.pts??0;
+    // Paso 2: diferencia de goles y goles a favor en TODO el grupo
+    if(b.dg!==a.dg) return b.dg-a.dg;
+    if(b.gf!==a.gf) return b.gf-a.gf;
+    // Paso 2 f) Conducta / fair play: menos puntos de penalización es mejor
+    const da=conductPts(discipline[a.code]),db=conductPts(discipline[b.code]);
     if(da!==db) return da-db;
-    // 8) Ranking FIFA: número más bajo = mejor
+    // Paso 3: Ranking FIFA (número más bajo = mejor)
     return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
   });
 }
@@ -386,7 +397,7 @@ function assignBestThirds(standings, _discipline={}) {
       if(b.pts!==a.pts) return b.pts-a.pts;
       if(b.dg!==a.dg) return b.dg-a.dg;
       if(b.gf!==a.gf) return b.gf-a.gf;
-      const da=_discipline?.[a.code]?.pts??0, db=_discipline?.[b.code]?.pts??0;
+      const da=conductPts(_discipline?.[a.code]), db=conductPts(_discipline?.[b.code]);
       if(da!==db) return da-db;
       return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
     });
@@ -433,11 +444,11 @@ function resolveSlotFull(slot,standings,kw,results,bestThirdsCache) {
   }
   if(/^W\d+$/.test(slot)){
     const w=kw[parseInt(slot.slice(1))];
-    return w?{code:w.winner,provisional:false}:null;
+    return w?{code:w.winner,provisional:!!w.provisional}:null; // hereda provisional del cruce origen
   }
   if(/^L\d+$/.test(slot)){
     const w=kw[parseInt(slot.slice(1))];
-    return w?{code:w.loser,provisional:false}:null;
+    return w?{code:w.loser,provisional:!!w.provisional}:null;
   }
   return null;
 }
@@ -455,10 +466,19 @@ function computeKnockout(results,standings,bestThirds={}) {
     if(!r||r.homeGoals===""||r.awayGoals==="") return;
     const hg=parseInt(r.homeGoals),ag=parseInt(r.awayGoals);
     if(isNaN(hg)||isNaN(ag)) return;
-    const home=resolveSlot(m.homeSlot,standings,kw,results,bestThirds);
-    const away=resolveSlot(m.awaySlot,standings,kw,results,bestThirds);
-    if(!home||!away) return;
-    kw[m.id]={winner:hg>=ag?home:away,loser:hg>=ag?away:home};
+    const hRes=resolveSlotFull(m.homeSlot,standings,kw,results,bestThirds);
+    const aRes=resolveSlotFull(m.awaySlot,standings,kw,results,bestThirds);
+    if(!hRes||!aRes) return;
+    const home=hRes.code,away=aRes.code;
+    const provisional=hRes.provisional||aRes.provisional; // si algún equipo aún es provisional, el ganador también
+    let winner,loser;
+    if(hg>ag){winner=home;loser=away;}
+    else if(ag>hg){winner=away;loser=home;}
+    else{ // empate en eliminatoria: lo decide el ganador por penales (r.pen); por defecto, el local
+      const pen=r.pen==="away"?away:home;
+      winner=pen; loser=(pen===home?away:home);
+    }
+    kw[m.id]={winner,loser,provisional};
   });
   return kw;
 }
@@ -500,11 +520,12 @@ function calcGlobalRanking(results,discipline={}) {
     return h;
   }
   return teams.sort((a,b)=>{
+    // 1) Puntos totales
     if(b.pts!==a.pts) return b.pts-a.pts;
-    if(b.dg!==a.dg) return b.dg-a.dg;
-    if(b.gf!==a.gf) return b.gf-a.gf;
+    // Mismo grupo y empatados en puntos: enfrentamiento directo PRIMERO (FIFA Art. 13).
+    // (Entre grupos distintos no hay enfrentamiento directo, así que se salta este paso.)
     if(a.group===b.group){
-      const tied=teams.filter(t=>t.pts===a.pts&&t.dg===a.dg&&t.gf===a.gf&&t.group===a.group).map(t=>t.code);
+      const tied=teams.filter(t=>t.group===a.group&&t.pts===a.pts).map(t=>t.code);
       if(tied.length>=2&&tied.includes(a.code)&&tied.includes(b.code)){
         const hh=h2h(tied);
         const ha=hh[a.code],hb=hh[b.code];
@@ -513,10 +534,13 @@ function calcGlobalRanking(results,discipline={}) {
         if(hb.gf!==ha.gf) return hb.gf-ha.gf;
       }
     }
-    const da=discipline[a.code]?.pts??0,db=discipline[b.code]?.pts??0;
+    // 2) Diferencia de goles y goles a favor en todo el grupo
+    if(b.dg!==a.dg) return b.dg-a.dg;
+    if(b.gf!==a.gf) return b.gf-a.gf;
+    // 3) Conducta (fair play) y luego Ranking FIFA
+    const da=conductPts(discipline[a.code]),db=conductPts(discipline[b.code]);
     if(da!==db) return da-db;
-    const ra=FIFA_RANK[a.code]??99,rb=FIFA_RANK[b.code]??99;
-    return ra-rb;
+    return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
   });
 }
 
@@ -534,15 +558,19 @@ function calcStats(results,discipline) {
     if(isNaN(hg)||isNaN(ag)) return;
     const goals=hg+ag;
     totalGoals+=goals; totalMatches++;
-    if(hg>ag) totalW++; else if(hg===ag) totalD++;
+    // Victoria = cualquier partido con ganador (local O visitante); el resto, empate.
+    if(hg===ag) totalD++; else totalW++;
     if(m.group){
       byGroup[m.group].goals+=goals; byGroup[m.group].played++;
       if(hg>ag||ag>hg) byGroup[m.group].w++; else byGroup[m.group].d++;
     }
-    [m.home,m.away].forEach(code=>{
-      const conf=TEAM_CONF[code];
-      if(conf){byConf[conf].goals+=goals;}
-    });
+    // Por confederación: a cada equipo se le acreditan SOLO los goles que metió.
+    const hConf=TEAM_CONF[m.home], aConf=TEAM_CONF[m.away];
+    if(hConf&&byConf[hConf]){ byConf[hConf].goals+=hg; byConf[hConf].played++; }
+    if(aConf&&byConf[aConf]){ byConf[aConf].goals+=ag; byConf[aConf].played++; }
+    if(hg>ag){ if(hConf&&byConf[hConf])byConf[hConf].w++; }
+    else if(ag>hg){ if(aConf&&byConf[aConf])byConf[aConf].w++; }
+    else { if(hConf&&byConf[hConf])byConf[hConf].d++; if(aConf&&byConf[aConf])byConf[aConf].d++; }
   });
 
   // Add discipline stats
@@ -823,7 +851,7 @@ export default function App() {
           <div>
             <SectionTitle>Ranking Global — 48 Equipos</SectionTitle>
             <div style={{fontSize:11,color:C.textMute,marginBottom:6}}>
-              Ranking de poder de los 48 equipos. Desempate: PTS → DG → GF → H2H (PTS/DG/GF) → Disciplina → Ranking FIFA
+              Ranking de poder de los 48 equipos. Desempate (FIFA Art. 13): PTS → Enfrentamiento directo (PTS/DG/GF) → DG → GF → Conducta → Ranking FIFA
             </div>
             {/* Leyenda: el resaltado refleja la clasificación REAL (igual que el bracket), no la posición en esta lista */}
             <div style={{fontSize:11,color:C.textSub,marginBottom:12,display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
@@ -888,7 +916,7 @@ export default function App() {
           <div>
             <SectionTitle>Tabla de Disciplina</SectionTitle>
             <div style={{fontSize:11,color:C.textMute,marginBottom:12}}>
-              Actualiza diariamente · TA = Amarillas · TR = Rojas · PTS = Puntos FIFA · Criterio #7 en ranking global
+              Captura TA y TR · PTS = puntos de conducta FIFA, calculados solos (1 × amarilla + 4 × roja) · Criterio de desempate
             </div>
             <div style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:8,overflow:"hidden",boxShadow:C.shadow}}>
               <div style={{overflowX:"auto"}}>
@@ -906,7 +934,7 @@ export default function App() {
                   <tbody>
                     {Object.values(GROUPS).flat()
                       .map(code=>({code,group:Object.entries(GROUPS).find(([,t])=>t.includes(code))[0],...(discipline[code]||{ta:0,tr:0,pts:0})}))
-                      .sort((a,b)=>(b.pts||0)-(a.pts||0)||(b.ta||0)-(a.ta||0))
+                      .sort((a,b)=>conductPts(b)-conductPts(a)||(b.tr||0)-(a.tr||0)||(b.ta||0)-(a.ta||0))
                       .map((row,i)=>(
                       <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:i%2===0?"transparent":"#f8fafc"}}>
                         <td style={{padding:"6px 10px",textAlign:"center",color:C.textMute,fontSize:11}}>{i+1}</td>
@@ -931,9 +959,8 @@ export default function App() {
                             style={{width:44,height:32,textAlign:"center",fontSize:14,fontWeight:700,background:"#fef2f2",border:`1px solid #fca5a5`,borderRadius:5,color:C.red,fontFamily:"inherit",outline:"none"}}/>
                         </td>
                         <td style={{padding:"6px 10px",textAlign:"center"}}>
-                          <input type="number" min="0" value={discipline[row.code]?.pts??0}
-                            onChange={e=>setDiscField(row.code,"pts",e.target.value)}
-                            style={{width:52,height:32,textAlign:"center",fontSize:14,fontWeight:800,background:C.goldLight,border:`1px solid ${C.gold}`,borderRadius:5,color:C.gold,fontFamily:"inherit",outline:"none"}}/>
+                          {/* PTS calculado automáticamente desde TA/TR (no editable) */}
+                          <span title="Calculado: 1 × amarilla + 4 × roja" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:52,height:32,fontSize:14,fontWeight:800,background:C.goldLight,border:`1px solid ${C.gold}`,borderRadius:5,color:C.gold}}>{conductPts(discipline[row.code])}</span>
                         </td>
                       </tr>
                     ))}
@@ -1093,7 +1120,6 @@ function StatsView({stats,results}) {
             <DonutChart slices={[
               {label:"Victorias",value:totalW,color:C.green},
               {label:"Empates",value:totalD,color:"#9333ea"},
-              {label:"Pendientes",value:Math.max(0,totalMatches-totalW-totalD),color:"#e2e8f0"},
             ]}/>
             <Legend items={[
               {label:`Victorias: ${totalW}`,color:C.green},
@@ -1230,8 +1256,19 @@ function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,result,onSet}) {
         <TeamBlock code={awayTeam} fallback={slotLabel(match.awaySlot)} win={aWin} align="left" prov={awayProv}/>
       </div>
       {draw&&played&&(
-        <div style={{textAlign:"center",marginTop:6,fontSize:10,color:"#92400e",background:"#fffbeb",borderRadius:4,padding:"3px 6px"}}>
-          Empate — pasa local por defecto (ajusta si hubo penales)
+        <div style={{marginTop:6,fontSize:10,background:"#fffbeb",borderRadius:4,padding:"4px 6px"}}>
+          <div style={{textAlign:"center",color:"#92400e",marginBottom:4,fontWeight:700}}>Empate — ¿quién ganó por penales?</div>
+          <div style={{display:"flex",gap:6,justifyContent:"center"}}>
+            {[["home",homeTeam],["away",awayTeam]].map(([side,code])=>{
+              const sel=(result.pen||"home")===side; // por defecto, el local
+              return(
+                <button key={side} onClick={()=>onSet(match.id,"pen",side)} disabled={provisional} style={{
+                  flex:1,maxWidth:120,padding:"4px 6px",borderRadius:4,cursor:provisional?"not-allowed":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,
+                  border:`1px solid ${sel?C.gold:C.cardBorder}`,background:sel?C.goldLight:C.card,color:sel?C.header:C.textSub
+                }}>{sel?"✓ ":""}{code} (pen)</button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
