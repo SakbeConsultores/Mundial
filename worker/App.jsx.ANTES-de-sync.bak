@@ -1,41 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-
-// ─────────────────────────────────────────────
-// SINCRONIZACIÓN COMPARTIDA (Notion vía Cloudflare Worker)
-// ─────────────────────────────────────────────
-// Pega aquí la URL de tu Worker después de desplegarlo (ver SETUP-SYNC.md).
-// Ejemplo: "https://mundial-sync.tu-usuario.workers.dev"
-// Si la dejas vacía, la app sigue funcionando solo con datos locales (sin compartir).
-const API_URL = "https://mundial-sync.gustavo-7cb.workers.dev";
-
-// Lee el estado compartido desde el Worker.
-async function apiGet() {
-  const r = await fetch(API_URL, { cache: "no-store" });
-  if (!r.ok) throw new Error("GET fallo");
-  return r.json(); // { results, discipline }
-}
-// Envía cambios al Worker (solo las claves que mandemos).
-async function apiPost(body) {
-  const r = await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error("POST fallo");
-  return r.json();
-}
-// Disciplina "vacía": una entrada por equipo con ceros.
-function emptyDiscipline() {
-  const d = {};
-  Object.values(GROUPS).flat().forEach((t) => { d[t] = { ta: 0, tr: 0, pts: 0 }; });
-  return d;
-}
-// ¿Hay datos reales capturados localmente? (para migrar la primera vez)
-function hasLocalData(results, discipline) {
-  const r = Object.values(results || {}).some((v) => v && (v.homeGoals !== "" || v.awayGoals !== ""));
-  const d = Object.values(discipline || {}).some((v) => v && (v.ta || v.tr || v.pts));
-  return r || d;
-}
+import { useState, useEffect, useMemo } from "react";
 
 // ─────────────────────────────────────────────
 // PALETA DÍA
@@ -543,26 +506,6 @@ export default function App() {
   const [filterGroup,setFilterGroup]=useState("Todos");
   const [countdown,setCountdown]=useState("");
 
-  // ── Sincronización compartida ──────────────────────────────
-  const [sync,setSync]=useState(API_URL?"…":"local"); // estado visible: … | online | offline | local
-  const hydrated=useRef(false);     // ya cargamos del servidor al menos una vez
-  const lastEdit=useRef(0);          // momento de la última edición local (timestamp)
-  const remoteResults=useRef(false); // marca: el próximo cambio de results vino del servidor
-  const remoteDisc=useRef(false);    // marca: el próximo cambio de discipline vino del servidor
-  const pending=useRef({});          // payload acumulado a enviar
-  const postTimer=useRef(null);      // temporizador del debounce de envío
-
-  // Envía al servidor agrupando cambios rápidos (debounce de 700 ms).
-  const pushState=(payload)=>{
-    if(!API_URL) return;             // sin Worker configurado: solo guardado local
-    pending.current={...pending.current,...payload};
-    clearTimeout(postTimer.current);
-    postTimer.current=setTimeout(()=>{
-      const body=pending.current; pending.current={};
-      apiPost(body).then(()=>setSync("online")).catch(()=>setSync("offline"));
-    },700);
-  };
-
   useEffect(()=>{
     const target=new Date("2026-06-11T15:00:00-04:00");
     const tick=()=>{
@@ -574,57 +517,13 @@ export default function App() {
     tick();const iv=setInterval(tick,1000);return()=>clearInterval(iv);
   },[]);
 
-  // Guarda resultados en local SIEMPRE (caché offline) y los sube al servidor
-  // solo si el cambio lo hizo el usuario (no si vino del propio servidor).
   useEffect(()=>{
-    try{localStorage.setItem("fwc2026_v2",JSON.stringify(results));}catch{}
-    if(remoteResults.current){remoteResults.current=false;return;} // cambio venido del servidor: no reenviar
-    if(!hydrated.current) return;                                  // aún no sincronizamos al abrir
-    lastEdit.current=Date.now();
-    pushState({results});                                          // sube el marcador a Notion
-    setSaved(true);const t=setTimeout(()=>setSaved(false),1200);return()=>clearTimeout(t);
+    try{localStorage.setItem("fwc2026_v2",JSON.stringify(results));setSaved(true);const t=setTimeout(()=>setSaved(false),1200);return()=>clearTimeout(t);}catch{}
   },[results]);
 
-  // Igual para las tarjetas (discipline).
   useEffect(()=>{
     try{localStorage.setItem("fwc2026_discipline",JSON.stringify(discipline));}catch{}
-    if(remoteDisc.current){remoteDisc.current=false;return;}
-    if(!hydrated.current) return;
-    lastEdit.current=Date.now();
-    pushState({discipline});
   },[discipline]);
-
-  // Carga el estado compartido al abrir y sondea cada 15 s para ver los cambios de otros.
-  useEffect(()=>{
-    if(!API_URL){hydrated.current=true;return;}   // sin Worker: la app queda en modo solo local
-    let alive=true;
-    const pull=async(initial=false)=>{
-      try{
-        const data=await apiGet();
-        if(!alive) return;
-        // No pisar una edición local muy reciente (ventana de 6 s) para no borrar lo que escribes.
-        if(!initial && Date.now()-lastEdit.current<6000){setSync("online");return;}
-        const sr=data.results||{}, sd=data.discipline||{};
-        const serverEmpty=Object.keys(sr).length===0 && Object.keys(sd).length===0;
-        if(initial && serverEmpty){
-          // Primera vez y servidor vacío: si ya tenías datos locales, los subimos (migración).
-          hydrated.current=true; setSync("online");
-          if(hasLocalData(results,discipline)) pushState({results,discipline});
-          return;
-        }
-        if(Object.keys(sr).length){ remoteResults.current=true; setResults({...initResults(),...sr}); }
-        if(Object.keys(sd).length){ remoteDisc.current=true; setDiscipline({...emptyDiscipline(),...sd}); }
-        hydrated.current=true; setSync("online");
-      }catch{
-        if(alive){ hydrated.current=true; setSync("offline"); } // sin conexión: seguimos con la caché local
-      }
-    };
-    pull(true);
-    const iv=setInterval(()=>pull(false),15000);
-    const onVis=()=>{ if(document.visibilityState==="visible") pull(false); };
-    document.addEventListener("visibilitychange",onVis);
-    return ()=>{alive=false;clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
-  },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setGoals=(id,side,val)=>setResults(p=>({...p,[id]:{...p[id],[side]:val}}));
   const setDiscField=(code,field,val)=>{
@@ -661,10 +560,6 @@ export default function App() {
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
             <div style={{fontSize:13,fontWeight:700,color:"#7dd3fc",fontVariantNumeric:"tabular-nums"}}>{countdown}</div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              {/* Indicador de sincronización compartida */}
-              <span style={{fontSize:10,color:sync==="online"?"#4ade80":sync==="offline"?"#f87171":sync==="local"?"#94a3b8":"#fbbf24"}}>
-                {sync==="online"?"🟢 en línea":sync==="offline"?"🔴 sin conexión":sync==="local"?"📴 solo local":"⏳ sincronizando…"}
-              </span>
               {saved&&<span style={{fontSize:10,color:"#4ade80"}}>✓ guardado</span>}
               <button onClick={reset} style={{background:"transparent",border:`1px solid #334155`,borderRadius:4,color:"#94a3b8",padding:"3px 8px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}
                 onMouseEnter={e=>{e.currentTarget.style.color="#f87171";e.currentTarget.style.borderColor="#f87171";}}
