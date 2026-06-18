@@ -124,6 +124,18 @@ const CONFEDERATIONS = {
 const TEAM_CONF = {};
 Object.entries(CONFEDERATIONS).forEach(([conf,teams])=>teams.forEach(t=>{TEAM_CONF[t]=conf;}));
 
+// Marca del uniforme de cada selección (verificado: 48 equipos, una marca c/u).
+// Reparto: Adidas 14 · Nike 12 · Puma 11 · resto 11.
+const BRAND = {
+  ARG:"Adidas",GER:"Adidas",ESP:"Adidas",BEL:"Adidas",JPN:"Adidas",MEX:"Adidas",SCO:"Adidas",RSA:"Adidas",COL:"Adidas",KSA:"Adidas",ALG:"Adidas",QAT:"Adidas",CUW:"Adidas",SWE:"Adidas",
+  BRA:"Nike",FRA:"Nike",ENG:"Nike",NED:"Nike",USA:"Nike",URU:"Nike",CRO:"Nike",KOR:"Nike",CAN:"Nike",AUS:"Nike",TUR:"Nike",NOR:"Nike",
+  POR:"Puma",MAR:"Puma",GHA:"Puma",SEN:"Puma",SUI:"Puma",CZE:"Puma",PAR:"Puma",CIV:"Puma",EGY:"Puma",NZL:"Puma",AUT:"Puma",
+  BIH:"Kelme",JOR:"Kelme",TUN:"Kappa",PAN:"Reebok",CPV:"Capelli",COD:"Umbro",ECU:"Marathon",IRQ:"Jako",IRN:"Majid/Merooj",UZB:"7Saber",HAI:"Saeta",
+};
+// Orden fijo (por número de equipos) y colores de marca para las gráficas.
+const BRAND_ORDER = ["Adidas","Nike","Puma","Kelme","Kappa","Reebok","Capelli","Umbro","Marathon","Jako","Majid/Merooj","7Saber","Saeta"];
+const BRAND_COLORS = {Adidas:"#0f172a",Nike:"#ef4444",Puma:"#16a34a",Kelme:"#9333ea",Kappa:"#0ea5e9",Reebok:"#f59e0b",Capelli:"#14b8a6",Umbro:"#64748b",Marathon:"#db2777",Jako:"#84cc16","Majid/Merooj":"#a855f7","7Saber":"#f97316",Saeta:"#06b6d4",Otras:"#94a3b8"};
+
 // Match → City
 const MATCH_CITY = {
   1:"Ciudad de México",2:"Guadalajara",3:"Toronto",4:"Los Angeles",5:"Boston",
@@ -547,9 +559,12 @@ function calcGlobalRanking(results,discipline={}) {
 function calcStats(results,discipline) {
   const allMatches=[...GROUP_MATCHES,...ALL_KO];
   let totalGoals=0,totalW=0,totalD=0,totalMatches=0;
-  const byGroup={},byConf={};
+  const byGroup={},byConf={},byBrand={};
   Object.keys(GROUPS).forEach(g=>{byGroup[g]={goals:0,w:0,d:0,played:0,ta:0,tr:0};});
   Object.keys(CONFEDERATIONS).forEach(c=>{byConf[c]={goals:0,w:0,d:0,played:0,ta:0,tr:0};});
+  // Por marca: 'teams' es fijo (cuántas selecciones viste cada marca); el resto se acumula.
+  BRAND_ORDER.forEach(b=>{byBrand[b]={teams:0,goals:0,w:0,d:0,played:0,ta:0,tr:0};});
+  Object.values(BRAND).forEach(b=>{if(byBrand[b])byBrand[b].teams++;});
 
   allMatches.forEach(m=>{
     const r=results[m.id];
@@ -571,20 +586,29 @@ function calcStats(results,discipline) {
     if(hg>ag){ if(hConf&&byConf[hConf])byConf[hConf].w++; }
     else if(ag>hg){ if(aConf&&byConf[aConf])byConf[aConf].w++; }
     else { if(hConf&&byConf[hConf])byConf[hConf].d++; if(aConf&&byConf[aConf])byConf[aConf].d++; }
+    // Por marca: mismo criterio que confederación (goles propios, partidos, victorias/empates).
+    const hBrand=BRAND[m.home], aBrand=BRAND[m.away];
+    if(hBrand&&byBrand[hBrand]){ byBrand[hBrand].goals+=hg; byBrand[hBrand].played++; }
+    if(aBrand&&byBrand[aBrand]){ byBrand[aBrand].goals+=ag; byBrand[aBrand].played++; }
+    if(hg>ag){ if(hBrand&&byBrand[hBrand])byBrand[hBrand].w++; }
+    else if(ag>hg){ if(aBrand&&byBrand[aBrand])byBrand[aBrand].w++; }
+    else { if(hBrand&&byBrand[hBrand])byBrand[hBrand].d++; if(aBrand&&byBrand[aBrand])byBrand[aBrand].d++; }
   });
 
   // Add discipline stats
   Object.entries(discipline||{}).forEach(([code,d])=>{
     const g=Object.entries(GROUPS).find(([,t])=>t.includes(code))?.[0];
     const conf=TEAM_CONF[code];
+    const brand=BRAND[code];
     if(g&&byGroup[g]){byGroup[g].ta+=(d.ta||0);byGroup[g].tr+=(d.tr||0);}
     if(conf&&byConf[conf]){byConf[conf].ta+=(d.ta||0);byConf[conf].tr+=(d.tr||0);}
+    if(brand&&byBrand[brand]){byBrand[brand].ta+=(d.ta||0);byBrand[brand].tr+=(d.tr||0);}
   });
 
   const totalTA=Object.values(discipline||{}).reduce((s,d)=>s+(d.ta||0),0);
   const totalTR=Object.values(discipline||{}).reduce((s,d)=>s+(d.tr||0),0);
 
-  return {totalGoals,totalMatches,totalW,totalD,totalTA,totalTR,byGroup,byConf};
+  return {totalGoals,totalMatches,totalW,totalD,totalTA,totalTR,byGroup,byConf,byBrand};
 }
 
 // ─────────────────────────────────────────────
@@ -908,7 +932,7 @@ export default function App() {
 
         {/* ── ESTADÍSTICAS ── */}
         {tab==="estadisticas"&&(
-          <StatsView stats={stats} results={results}/>
+          <StatsView stats={stats} results={results} qualifiedInfo={qualifiedInfo}/>
         )}
 
         {/* ── DISCIPLINA ── */}
@@ -1027,25 +1051,28 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestT
 // ─────────────────────────────────────────────
 // STATS VIEW
 // ─────────────────────────────────────────────
-function StatsView({stats,results}) {
-  const {totalGoals,totalMatches,totalW,totalD,totalTA,totalTR,byGroup,byConf}=stats;
+function StatsView({stats,results,qualifiedInfo={}}) {
+  const {totalGoals,totalMatches,totalW,totalD,totalTA,totalTR,byGroup,byConf,byBrand={}}=stats;
   const avgGoals=totalMatches>0?(totalGoals/totalMatches).toFixed(2):0;
   const confColors={"CONMEBOL":"#0ea5e9","UEFA":"#3b82f6","CONCACAF":"#10b981","CAF":"#f59e0b","AFC":"#ef4444","OFC":"#8b5cf6"};
 
   // Bar chart helper
-  const BarChart=({data,colorKey,label,valueKey="goals"})=>{
+  const BarChart=({data,colorKey,colors,label,valueKey="goals"})=>{
     const max=Math.max(...data.map(d=>d[valueKey]||0),1);
     return(
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {data.map(d=>(
+        {data.map(d=>{
+          const bg=colors?(colors[d.key]||C.blue):(colorKey?confColors[d.key]||C.blue:C.blue);
+          return(
           <div key={d.key} style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{width:80,fontSize:11,fontWeight:700,color:C.textSub,textAlign:"right",flexShrink:0}}>{d.key}</div>
+            <div style={{width:90,fontSize:11,fontWeight:700,color:C.textSub,textAlign:"right",flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.key}</div>
             <div style={{flex:1,background:"#f1f5f9",borderRadius:4,height:20,overflow:"hidden"}}>
-              <div style={{width:`${((d[valueKey]||0)/max)*100}%`,height:"100%",background:colorKey?confColors[d.key]||C.blue:C.blue,borderRadius:4,minWidth:d[valueKey]>0?4:0,transition:"width .3s"}}/>
+              <div style={{width:`${((d[valueKey]||0)/max)*100}%`,height:"100%",background:bg,borderRadius:4,minWidth:d[valueKey]>0?4:0,transition:"width .3s"}}/>
             </div>
-            <div style={{width:32,fontSize:12,fontWeight:700,color:C.text}}>{d[valueKey]||0}</div>
+            <div style={{width:36,fontSize:12,fontWeight:700,color:C.text,textAlign:"right"}}>{d[valueKey]||0}</div>
           </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -1077,6 +1104,24 @@ function StatsView({stats,results}) {
 
   const groupData=Object.entries(byGroup).map(([k,v])=>({key:k,...v}));
   const confData=Object.entries(byConf).map(([k,v])=>({key:k,...v}));
+
+  // ── Datos por MARCA de uniforme ──────────────────────────────
+  const brandData=BRAND_ORDER.map(b=>({key:b,...(byBrand[b]||{teams:0,goals:0,w:0,d:0,played:0,ta:0,tr:0})}));
+  // Reparto (cuántas selecciones por marca) y goles, ordenados de mayor a menor.
+  const brandTeams=[...brandData].filter(d=>d.teams>0).sort((a,b)=>b.teams-a.teams);
+  const brandGoals=[...brandData].sort((a,b)=>b.goals-a.goals);
+  // Rendimiento: puntos promedio por equipo. Las marcas de 1 equipo se agrupan en "Otras".
+  const big=brandData.filter(d=>d.teams>=2);
+  const small=brandData.filter(d=>d.teams===1);
+  const smallTeams=small.reduce((s,d)=>s+d.teams,0);
+  const smallPts=small.reduce((s,d)=>s+d.w*3+d.d,0);
+  const brandPerf=[...big.map(d=>({key:d.key,avg:d.teams?+((d.w*3+d.d)/d.teams).toFixed(2):0})),
+    ...(smallTeams?[{key:"Otras",avg:+(smallPts/smallTeams).toFixed(2)}]:[])].sort((a,b)=>b.avg-a.avg);
+  // Marcas entre los clasificados (1°/2° de grupo + mejores terceros).
+  const qualBrand={};
+  Object.keys(qualifiedInfo||{}).forEach(code=>{const b=BRAND[code];if(b)qualBrand[b]=(qualBrand[b]||0)+1;});
+  const totalQual=Object.keys(qualifiedInfo||{}).length;
+  const brandQual=BRAND_ORDER.map(b=>({key:b,q:qualBrand[b]||0})).filter(d=>d.q>0).sort((a,b)=>b.q-a.q);
 
   return(
     <div>
@@ -1152,6 +1197,27 @@ function StatsView({stats,results}) {
         <Card title="🟥 Tarjetas Rojas por Confederación">
           <BarChart data={confData} colorKey valueKey="tr"/>
           <Legend items={confData.map(d=>({label:d.key,color:confColors[d.key]||C.blue}))}/>
+        </Card>
+
+        {/* ── MARCAS DE UNIFORME ── */}
+        <Card title="👕 Reparto de Marcas (48 selecciones)">
+          <BarChart data={brandTeams} colors={BRAND_COLORS} valueKey="teams"/>
+        </Card>
+
+        <Card title="👕 Goles por Marca">
+          <BarChart data={brandGoals} colors={BRAND_COLORS} valueKey="goals"/>
+        </Card>
+
+        <Card title="👕 Rendimiento por Marca (pts promedio/equipo)">
+          <div style={{fontSize:10,color:C.textMute,marginBottom:8}}>Marcas de 1 selección agrupadas como "Otras".</div>
+          <BarChart data={brandPerf} colors={BRAND_COLORS} valueKey="avg"/>
+        </Card>
+
+        <Card title="👕 Marcas entre Clasificados">
+          <div style={{fontSize:10,color:C.textMute,marginBottom:8}}>{totalQual} de 32 clasificados (1°/2° de grupo + mejores 3°).</div>
+          {brandQual.length>0
+            ? <BarChart data={brandQual} colors={BRAND_COLORS} valueKey="q"/>
+            : <div style={{fontSize:12,color:C.textMute,padding:"8px 0"}}>Aún no hay equipos clasificados.</div>}
         </Card>
 
       </div>
