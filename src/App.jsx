@@ -893,17 +893,91 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestT
 // BRACKET TREE VIEW
 // ─────────────────────────────────────────────
 function BracketTree({standings,knockoutWinners,results,groupResults,bestThirds,getTeam}) {
-  // Build all match resolutions
-  const r=(slot)=>getTeam(slot);
+  const allFixtures=[...R32_FIXTURE,...R16_FIXTURE,...QF_FIXTURE,...SF_FIXTURE,...FINAL_FIXTURE];
+  const getMatch=(id)=>allFixtures.find(m=>m.id===id);
+
   const score=(id)=>{
     const res=results[id];
     if(!res||res.homeGoals===""||res.awayGoals==="") return null;
-    return `${res.homeGoals}:${res.awayGoals}`;
+    return {h:parseInt(res.homeGoals),a:parseInt(res.awayGoals)};
   };
 
-  // Match pairs for Dieciseisavos (left side, right side)
-  // Left bracket: M73,M74,M75,M76,M77,M78,M79,M80
-  // Right bracket: M81,M82,M83,M84,M85,M86,M87,M88
+  // Heights
+  const TEAM_H=44;   // height of one team row
+  const VS_H=16;     // height of vs divider
+  const MATCH_H=TEAM_H*2+VS_H; // total match card height = 104
+  const GAP=24;      // gap between matches in same column
+  const SLOT=MATCH_H+GAP; // slot height per match = 128
+
+  // TeamRow
+  const TeamRow=({slot,matchId,side,isRight})=>{
+    const res=getTeam(slot);
+    const code=res?.code||null;
+    const prov=res?.provisional||false;
+    const lbl=res?.label||slotLabel(slot);
+    const sc=score(matchId);
+    const played=!!sc;
+    const isWin=played&&((side==="home"&&sc.h>sc.a)||(side==="away"&&sc.a>sc.h));
+    const goals=sc?(side==="home"?sc.h:sc.a):null;
+    return(
+      <div style={{
+        height:TEAM_H,display:"flex",alignItems:"center",gap:5,
+        padding:"0 8px",
+        background:isWin?C.goldLight:"#fff",
+        borderBottom:`1px solid ${C.cardBorder}`,
+      }}>
+        {!isRight&&<>
+          <span style={{fontSize:16,flexShrink:0}}>{code?FLAGS[code]:"🏳️"}</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:11,fontWeight:isWin?800:600,color:isWin?C.gold:code?C.text:C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{code||"TBD"}</div>
+            <div style={{fontSize:8,color:prov?"#92400e":C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lbl}</div>
+          </div>
+          {goals!==null&&<span style={{fontSize:13,fontWeight:800,color:isWin?C.gold:C.textSub,flexShrink:0,minWidth:16,textAlign:"right"}}>{goals}</span>}
+        </>}
+        {isRight&&<>
+          {goals!==null&&<span style={{fontSize:13,fontWeight:800,color:isWin?C.gold:C.textSub,flexShrink:0,minWidth:16,textAlign:"left"}}>{goals}</span>}
+          <div style={{flex:1,minWidth:0,textAlign:"right"}}>
+            <div style={{fontSize:11,fontWeight:isWin?800:600,color:isWin?C.gold:code?C.text:C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{code||"TBD"}</div>
+            <div style={{fontSize:8,color:prov?"#92400e":C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lbl}</div>
+          </div>
+          <span style={{fontSize:16,flexShrink:0}}>{code?FLAGS[code]:"🏳️"}</span>
+        </>}
+      </div>
+    );
+  };
+
+  // Match card — positioned absolutely
+  const MatchCard=({matchId,top,isRight,label})=>{
+    const m=getMatch(matchId);
+    if(!m) return null;
+    const sc=score(matchId);
+    return(
+      <div style={{position:"absolute",top,left:0,right:0}}>
+        {label&&<div style={{fontSize:8,color:C.textMute,fontWeight:700,letterSpacing:1,textAlign:"center",marginBottom:2}}>{label}</div>}
+        <div style={{
+          border:`1px solid ${sc?C.gold:C.cardBorder}`,borderRadius:6,overflow:"hidden",
+          boxShadow:sc?"0 1px 6px rgba(184,134,11,.15)":C.shadow,
+          background:C.card,
+        }}>
+          <TeamRow slot={m.homeSlot} matchId={matchId} side="home" isRight={isRight}/>
+          <div style={{height:VS_H,display:"flex",alignItems:"center",justifyContent:"center",background:"#f8fafc",borderTop:`1px solid ${C.cardBorder}`,borderBottom:`1px solid ${C.cardBorder}`}}>
+            <span style={{fontSize:9,color:sc?C.gold:C.textMute,fontWeight:700}}>{sc?`${sc.h} : ${sc.a}`:"vs"}</span>
+          </div>
+          <TeamRow slot={m.awaySlot} matchId={matchId} side="away" isRight={isRight}/>
+        </div>
+      </div>
+    );
+  };
+
+
+
+
+
+  // Exact vertical positions (pre-calculated)
+  const TOTAL_H = 1024;
+  const W = 195;
+  const CONN = 40;
+
   const leftR32  = [73,74,75,76,77,78,79,80];
   const rightR32 = [81,82,83,84,85,86,87,88];
   const leftR16  = [89,90,91,92];
@@ -913,112 +987,95 @@ function BracketTree({standings,knockoutWinners,results,groupResults,bestThirds,
   const leftSF   = [101];
   const rightSF  = [102];
 
-  const allFixtures = [...R32_FIXTURE,...R16_FIXTURE,...QF_FIXTURE,...SF_FIXTURE,...FINAL_FIXTURE];
-  const getMatch=(id)=>allFixtures.find(m=>m.id===id);
+  // Pre-calculated tops for perfect alignment
+  const R32_TOPS  = [0, 128, 256, 384, 512, 640, 768, 896];
+  const R16_TOPS  = [64, 320, 576, 832];
+  const QF_TOPS   = [192, 704];
+  const SF_TOP    = 448;
+  const FINAL_TOP = 344;
+  const THIRD_TOP = 576;
 
-  // Team box component for tree
-  const TeamBox=({slot,matchId,side})=>{
-    const res=getTeam(slot);
-    const code=res?.code||null;
-    const prov=res?.provisional||false;
-    const label=res?.label||slotLabel(slot);
-    const matchRes=results[matchId];
-    const played=matchRes&&matchRes.homeGoals!==""&&matchRes.awayGoals!=="";
-    const hg=parseInt(matchRes?.homeGoals),ag=parseInt(matchRes?.awayGoals);
-    const isWinner=played&&((side==="home"&&hg>ag)||(side==="away"&&ag>hg));
-
+  // SVG connector lines between two columns
+  const Connectors=({fromTops, toTops, dir})=>{
+    const lines=[];
+    toTops.forEach((toTop,i)=>{
+      const from1 = fromTops[2*i]   + MATCH_H/2;
+      const from2 = fromTops[2*i+1] + MATCH_H/2;
+      const toY   = toTop + MATCH_H/2;
+      const x0=dir==="right"?W:0, x1=dir==="right"?CONN/2:CONN/2, x2=dir==="right"?CONN:0;
+      lines.push(
+        <g key={i}>
+          <line x1={x0} y1={from1} x2={x1} y2={from1} stroke={C.cardBorder} strokeWidth={1.5}/>
+          <line x1={x0} y1={from2} x2={x1} y2={from2} stroke={C.cardBorder} strokeWidth={1.5}/>
+          <line x1={x1} y1={from1} x2={x1} y2={from2} stroke={C.cardBorder} strokeWidth={1.5}/>
+          <line x1={x1} y1={toY}   x2={x2} y2={toY}   stroke={C.cardBorder} strokeWidth={1.5}/>
+        </g>
+      );
+    });
     return(
-      <div style={{
-        display:"flex",alignItems:"center",gap:6,
-        padding:"5px 8px",
-        background:isWinner?C.goldLight:code?"#fff":"#f8fafc",
-        border:`1px solid ${isWinner?C.gold:prov?"#f59e0b":code?C.cardBorder:"#e2e8f0"}`,
-        borderRadius:5,minWidth:150,maxWidth:190,
-        boxShadow:isWinner?"0 1px 4px rgba(184,134,11,.2)":C.shadow,
-      }}>
-        <span style={{fontSize:18,flexShrink:0}}>{code?FLAGS[code]:"🏳️"}</span>
-        <div style={{minWidth:0,flex:1}}>
-          <div style={{fontSize:12,fontWeight:isWinner?800:600,color:isWinner?C.gold:code?C.text:C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-            {code||"TBD"}
-          </div>
-          <div style={{fontSize:9,color:prov?"#92400e":C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-            {label}
-          </div>
-        </div>
-        {played&&<span style={{fontSize:11,fontWeight:700,color:isWinner?C.gold:C.textMute,flexShrink:0}}>{side==="home"?hg:ag}</span>}
+      <div style={{flexShrink:0,width:CONN,position:"relative"}}>
+        <svg width={CONN} height={TOTAL_H} style={{position:"absolute",top:34,left:0,overflow:"visible"}}>
+          {lines}
+        </svg>
       </div>
     );
   };
 
-  // Match column entry
-  const MatchEntry=({matchId,label})=>{
-    const m=getMatch(matchId);
-    if(!m) return null;
-    const sc=score(matchId);
+  // SF→Final connectors
+  const SFConnectors=({sfTops, finalTop, dir})=>{
+    const from1=sfTops[0]+MATCH_H/2;
+    const toY=finalTop+MATCH_H/2;
+    const x0=dir==="right"?W:0, x1=CONN/2, x2=dir==="right"?CONN:0;
     return(
-      <div style={{display:"flex",flexDirection:"column",gap:2,marginBottom:8}}>
-        {label&&<div style={{fontSize:9,color:C.textMute,fontWeight:700,letterSpacing:1,marginBottom:2}}>{label}</div>}
-        <TeamBox slot={m.homeSlot} matchId={matchId} side="home"/>
-        <div style={{display:"flex",alignItems:"center",gap:4,padding:"1px 8px"}}>
-          <div style={{flex:1,height:1,background:C.cardBorder}}/>
-          <span style={{fontSize:10,color:sc?C.gold:C.textMute,fontWeight:700}}>{sc||"vs"}</span>
-          <div style={{flex:1,height:1,background:C.cardBorder}}/>
-        </div>
-        <TeamBox slot={m.awaySlot} matchId={matchId} side="away"/>
+      <div style={{flexShrink:0,width:CONN,position:"relative"}}>
+        <svg width={CONN} height={TOTAL_H} style={{position:"absolute",top:34,left:0,overflow:"visible"}}>
+          <line x1={x0} y1={from1} x2={x2} y2={from1} stroke={C.cardBorder} strokeWidth={1.5}/>
+        </svg>
       </div>
     );
   };
 
-  // Column component
-  const Col=({title,ids,width=200})=>(
-    <div style={{display:"flex",flexDirection:"column",flexShrink:0,width,gap:0}}>
-      <div style={{fontSize:11,fontWeight:800,letterSpacing:2,color:C.gold,borderBottom:`2px solid ${C.gold}`,paddingBottom:4,marginBottom:12,textAlign:"center"}}>{title}</div>
-      {ids.map(id=><MatchEntry key={id} matchId={id}/>)}
-    </div>
-  );
-
-  // Final/3rd place special column
-  const FinalCol=()=>(
-    <div style={{display:"flex",flexDirection:"column",flexShrink:0,width:210,gap:0,alignItems:"center"}}>
-      <div style={{fontSize:11,fontWeight:800,letterSpacing:2,color:C.gold,borderBottom:`2px solid ${C.gold}`,paddingBottom:4,marginBottom:12,width:"100%",textAlign:"center"}}>FINAL</div>
-      <MatchEntry matchId={104}/>
-      <div style={{marginTop:16,width:"100%"}}>
-        <div style={{fontSize:10,fontWeight:700,color:C.textMute,textAlign:"center",marginBottom:6}}>3er LUGAR</div>
-        <MatchEntry matchId={103}/>
+  // Column with absolute-positioned match cards
+  const AbsCol=({title,ids,tops,isRight})=>(
+    <div style={{flexShrink:0,width:W}}>
+      <div style={{fontSize:10,fontWeight:800,letterSpacing:2,color:C.gold,borderBottom:`2px solid ${C.gold}`,paddingBottom:4,marginBottom:8,textAlign:"center"}}>{title}</div>
+      <div style={{position:"relative",height:TOTAL_H}}>
+        {ids.map((id,i)=><MatchCard key={id} matchId={id} top={tops[i]} isRight={isRight}/>)}
       </div>
-    </div>
-  );
-
-  // Connector lines between columns (visual spacer)
-  const Connector=()=>(
-    <div style={{display:"flex",alignItems:"center",flexShrink:0,width:20}}>
-      <div style={{width:"100%",height:1,background:C.cardBorder,borderStyle:"dashed"}}/>
     </div>
   );
 
   return(
-    <div style={{overflowX:"auto",paddingBottom:16}}>
-      <div style={{display:"flex",gap:0,alignItems:"flex-start",minWidth:1400,padding:"8px 4px"}}>
-        {/* LEFT SIDE */}
-        <Col title="DIECISEISAVOS" ids={leftR32} width={210}/>
-        <Connector/>
-        <Col title="OCTAVOS" ids={leftR16} width={210}/>
-        <Connector/>
-        <Col title="CUARTOS" ids={leftQF} width={210}/>
-        <Connector/>
-        <Col title="SEMIS" ids={leftSF} width={210}/>
-        <Connector/>
+    <div style={{overflowX:"auto",paddingBottom:24,paddingTop:8}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:0,minWidth:W*9+CONN*8+20}}>
+        {/* LEFT */}
+        <AbsCol title="DIECISEISAVOS" ids={leftR32}  tops={R32_TOPS} isRight={false}/>
+        <Connectors fromTops={R32_TOPS} toTops={R16_TOPS} dir="right"/>
+        <AbsCol title="OCTAVOS"       ids={leftR16}  tops={R16_TOPS} isRight={false}/>
+        <Connectors fromTops={R16_TOPS} toTops={QF_TOPS} dir="right"/>
+        <AbsCol title="CUARTOS"       ids={leftQF}   tops={QF_TOPS}  isRight={false}/>
+        <Connectors fromTops={QF_TOPS} toTops={[SF_TOP]} dir="right"/>
+        <AbsCol title="SEMIS"         ids={leftSF}   tops={[SF_TOP]} isRight={false}/>
+        <SFConnectors sfTops={[SF_TOP]} finalTop={FINAL_TOP} dir="right"/>
+
         {/* CENTER */}
-        <FinalCol/>
-        <Connector/>
-        {/* RIGHT SIDE */}
-        <Col title="SEMIS" ids={rightSF} width={210}/>
-        <Connector/>
-        <Col title="CUARTOS" ids={rightQF} width={210}/>
-        <Connector/>
-        <Col title="OCTAVOS" ids={rightR16} width={210}/>
-        <Connector/>
-        <Col title="DIECISEISAVOS" ids={rightR32} width={210}/>
+        <div style={{flexShrink:0,width:W}}>
+          <div style={{fontSize:10,fontWeight:800,letterSpacing:2,color:C.gold,borderBottom:`2px solid ${C.gold}`,paddingBottom:4,marginBottom:8,textAlign:"center"}}>FINAL</div>
+          <div style={{position:"relative",height:TOTAL_H}}>
+            <MatchCard matchId={104} top={FINAL_TOP} label="🏆 GRAN FINAL"/>
+            <MatchCard matchId={103} top={THIRD_TOP}  label="🥉 3er LUGAR"/>
+          </div>
+        </div>
+
+        {/* RIGHT */}
+        <SFConnectors sfTops={[SF_TOP]} finalTop={FINAL_TOP} dir="left"/>
+        <AbsCol title="SEMIS"         ids={rightSF}  tops={[SF_TOP]} isRight={true}/>
+        <Connectors fromTops={QF_TOPS} toTops={[SF_TOP]} dir="left"/>
+        <AbsCol title="CUARTOS"       ids={rightQF}  tops={QF_TOPS}  isRight={true}/>
+        <Connectors fromTops={R16_TOPS} toTops={QF_TOPS} dir="left"/>
+        <AbsCol title="OCTAVOS"       ids={rightR16} tops={R16_TOPS} isRight={true}/>
+        <Connectors fromTops={R32_TOPS} toTops={R16_TOPS} dir="left"/>
+        <AbsCol title="DIECISEISAVOS" ids={rightR32} tops={R32_TOPS} isRight={true}/>
       </div>
       <div style={{fontSize:10,color:C.textMute,marginTop:8,textAlign:"center"}}>
         ← Desplaza horizontalmente para ver el bracket completo →
