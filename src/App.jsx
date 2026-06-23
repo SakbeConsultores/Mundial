@@ -151,8 +151,8 @@ const GROUP_MATCHES = [
   {id:28,group:"A",date:"2026-06-17",time:"21:00",home:"MEX",away:"KOR"},
   {id:29,group:"C",date:"2026-06-19",time:"20:30",home:"BRA",away:"HAI"},
   {id:30,group:"C",date:"2026-06-19",time:"18:00",home:"SCO",away:"MAR"},
-  {id:31,group:"D",date:"2026-06-19",time:"23:00",home:"TUR",away:"PAR"},
-  {id:32,group:"D",date:"2026-06-19",time:"15:00",home:"USA",away:"AUS"},
+  {id:31,group:"D",date:"2026-06-20",time:"23:00",home:"TUR",away:"PAR"},
+  {id:32,group:"D",date:"2026-06-20",time:"15:00",home:"USA",away:"AUS"},
   {id:33,group:"E",date:"2026-06-20",time:"16:00",home:"GER",away:"CIV"},
   {id:34,group:"E",date:"2026-06-20",time:"20:00",home:"ECU",away:"CUW"},
   {id:35,group:"F",date:"2026-06-20",time:"13:00",home:"NED",away:"SWE"},
@@ -693,8 +693,22 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {globalRanking.map((row,i)=>(
-                      <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:i<2?C.goldLight+"55":i<24?C.blueLight+"33":"transparent"}}>
+                    {globalRanking.map((row,i)=>{
+                      // Color tiers:
+                      // Gold: top 2 per group = top 24 if perfectly distributed, but we use actual group position
+                      // Blue: potential best thirds (positions 3 in each group, best 8 qualify)
+                      // We color by rank within group via standings
+                      const groupPos = standings[row.group]?.findIndex(t=>t.code===row.code) ?? -1;
+                      const rowBg = groupPos===0 ? C.goldLight+"66"
+                                  : groupPos===1 ? C.blueLight+"55"
+                                  : groupPos===2 ? "#f0fdf4"  // light green - potential best third
+                                  : "transparent";
+                      const leftBorder = groupPos===0 ? `3px solid ${C.gold}`
+                                       : groupPos===1 ? `3px solid ${C.blue}`
+                                       : groupPos===2 ? "3px solid #16a34a"
+                                       : `3px solid transparent`;
+                      return(
+                      <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:rowBg,borderLeft:leftBorder}}>
                         <td style={{padding:"7px 8px",textAlign:"center"}}>
                           <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,fontSize:11,fontWeight:700,background:i===0?C.gold:i<3?C.blueLight:"#f1f5f9",color:i===0?C.header:i<3?C.blue:C.textMute}}>{i+1}</span>
                         </td>
@@ -714,9 +728,14 @@ export default function App() {
                         <td style={{padding:"7px 6px",textAlign:"center",fontWeight:600,fontSize:12,color:row.dg>0?C.blue:row.dg<0?C.red:C.textSub}}>{row.dg>0?"+":""}{row.dg}</td>
                         <td style={{padding:"7px 6px",textAlign:"center",fontWeight:800,fontSize:15,color:C.gold}}>{row.pts}</td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
+              </div>
+              <div style={{padding:"8px 14px",fontSize:10,color:C.textMute,borderTop:`1px solid ${C.cardBorder}`,display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:C.gold,borderRadius:2,display:"inline-block"}}/>1° de grupo</span>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:C.blue,borderRadius:2,display:"inline-block"}}/>2° de grupo</span>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:"#16a34a",borderRadius:2,display:"inline-block"}}/>3° de grupo (posible clasificado)</span>
               </div>
             </div>
           </div>
