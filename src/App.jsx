@@ -1,50 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-
-// ─────────────────────────────────────────────
-// SINCRONIZACIÓN COMPARTIDA (Notion vía Cloudflare Worker)
-// ─────────────────────────────────────────────
-// Pega aquí la URL de tu Worker después de desplegarlo (ver SETUP-SYNC.md).
-// Ejemplo: "https://mundial-sync.tu-usuario.workers.dev"
-// Si la dejas vacía, la app sigue funcionando solo con datos locales (sin compartir).
-const API_URL = "https://mundial-sync.gustavo-7cb.workers.dev";
-
-// Lee el estado compartido desde el Worker.
-async function apiGet() {
-  const r = await fetch(API_URL, { cache: "no-store" });
-  if (!r.ok) throw new Error("GET fallo");
-  return r.json(); // { results, discipline }
-}
-// Envía cambios al Worker (solo las claves que mandemos).
-async function apiPost(body) {
-  const r = await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error("POST fallo");
-  return r.json();
-}
-// Disciplina "vacía": una entrada por equipo con ceros.
-function emptyDiscipline() {
-  const d = {};
-  Object.values(GROUPS).flat().forEach((t) => { d[t] = { ta: 0, tr: 0, pts: 0 }; });
-  return d;
-}
-// ¿Hay datos reales capturados localmente? (para migrar la primera vez)
-function hasLocalData(results, discipline) {
-  const r = Object.values(results || {}).some((v) => v && (v.homeGoals !== "" || v.awayGoals !== ""));
-  const d = Object.values(discipline || {}).some((v) => v && (v.ta || v.tr || v.pts));
-  return r || d;
-}
-
-// Puntos de conducta (fair play) FIFA Art. 13, derivados de las tarjetas.
-// Aproximación: amarilla = 1, roja = 4 (roja directa). Más puntos = peor; menos = mejor.
-// Nota: con solo el conteo de amarillas/rojas NO se puede distinguir una roja directa (-4)
-// de una roja por doble amarilla (-3) ni el combo amarilla+roja (-5), así que es aproximado.
-function conductPts(d) {
-  if (!d) return 0;
-  return (d.ta || 0) * 1 + (d.tr || 0) * 4;
-}
+import { useState, useEffect, useMemo } from "react";
 
 // ─────────────────────────────────────────────
 // PALETA DÍA
@@ -110,7 +64,6 @@ const FIFA_RANK = {
   NOR:25,SWE:26,AUS:27,ALG:28,CZE:29,TUN:30,PAR:31,TUR:32,
   SCO:33,CIV:35,QAT:36,KSA:37,BIH:38,GHA:39,PAN:40,
   RSA:41,JOR:42,UZB:43,IRQ:44,COD:45,CPV:46,HAI:47,CUW:48,
-  NZL:85, // Nueva Zelanda (OFC): ranking real FIFA; al ser el más alto, queda último en cualquier empate
 };
 
 const CONFEDERATIONS = {
@@ -123,18 +76,6 @@ const CONFEDERATIONS = {
 };
 const TEAM_CONF = {};
 Object.entries(CONFEDERATIONS).forEach(([conf,teams])=>teams.forEach(t=>{TEAM_CONF[t]=conf;}));
-
-// Marca del uniforme de cada selección (verificado: 48 equipos, una marca c/u).
-// Reparto: Adidas 14 · Nike 12 · Puma 11 · resto 11.
-const BRAND = {
-  ARG:"Adidas",GER:"Adidas",ESP:"Adidas",BEL:"Adidas",JPN:"Adidas",MEX:"Adidas",SCO:"Adidas",RSA:"Adidas",COL:"Adidas",KSA:"Adidas",ALG:"Adidas",QAT:"Adidas",CUW:"Adidas",SWE:"Adidas",
-  BRA:"Nike",FRA:"Nike",ENG:"Nike",NED:"Nike",USA:"Nike",URU:"Nike",CRO:"Nike",KOR:"Nike",CAN:"Nike",AUS:"Nike",TUR:"Nike",NOR:"Nike",
-  POR:"Puma",MAR:"Puma",GHA:"Puma",SEN:"Puma",SUI:"Puma",CZE:"Puma",PAR:"Puma",CIV:"Puma",EGY:"Puma",NZL:"Puma",AUT:"Puma",
-  BIH:"Kelme",JOR:"Kelme",TUN:"Kappa",PAN:"Reebok",CPV:"Capelli",COD:"Umbro",ECU:"Marathon",IRQ:"Jako",IRN:"Majid/Merooj",UZB:"7Saber",HAI:"Saeta",
-};
-// Orden fijo (por número de equipos) y colores de marca para las gráficas.
-const BRAND_ORDER = ["Adidas","Nike","Puma","Kelme","Kappa","Reebok","Capelli","Umbro","Marathon","Jako","Majid/Merooj","7Saber","Saeta"];
-const BRAND_COLORS = {Adidas:"#0f172a",Nike:"#ef4444",Puma:"#16a34a",Kelme:"#9333ea",Kappa:"#0ea5e9",Reebok:"#f59e0b",Capelli:"#14b8a6",Umbro:"#64748b",Marathon:"#db2777",Jako:"#84cc16","Majid/Merooj":"#a855f7","7Saber":"#f97316",Saeta:"#06b6d4",Otras:"#94a3b8"};
 
 // Match → City
 const MATCH_CITY = {
@@ -204,18 +145,18 @@ const GROUP_MATCHES = [
   {id:22,group:"L",date:"2026-06-17",time:"16:00",home:"ENG",away:"CRO"},
   {id:23,group:"K",date:"2026-06-17",time:"13:00",home:"POR",away:"COD"},
   {id:24,group:"K",date:"2026-06-17",time:"22:00",home:"UZB",away:"COL"},
-  {id:25,group:"A",date:"2026-06-18",time:"12:00",home:"CZE",away:"RSA"},
-  {id:26,group:"B",date:"2026-06-18",time:"15:00",home:"SUI",away:"BIH"},
+  {id:25,group:"A",date:"2026-06-17",time:"12:00",home:"CZE",away:"RSA"},
+  {id:26,group:"B",date:"2026-06-17",time:"15:00",home:"SUI",away:"BIH"},
   {id:27,group:"B",date:"2026-06-18",time:"18:00",home:"CAN",away:"QAT"},
-  {id:28,group:"A",date:"2026-06-18",time:"21:00",home:"MEX",away:"KOR"},
+  {id:28,group:"A",date:"2026-06-17",time:"21:00",home:"MEX",away:"KOR"},
   {id:29,group:"C",date:"2026-06-19",time:"20:30",home:"BRA",away:"HAI"},
   {id:30,group:"C",date:"2026-06-19",time:"18:00",home:"SCO",away:"MAR"},
   {id:31,group:"D",date:"2026-06-20",time:"23:00",home:"TUR",away:"PAR"},
   {id:32,group:"D",date:"2026-06-20",time:"15:00",home:"USA",away:"AUS"},
   {id:33,group:"E",date:"2026-06-20",time:"16:00",home:"GER",away:"CIV"},
   {id:34,group:"E",date:"2026-06-20",time:"20:00",home:"ECU",away:"CUW"},
-  {id:35,group:"F",date:"2026-06-19",time:"13:00",home:"NED",away:"SWE"},
-  {id:36,group:"F",date:"2026-06-19",time:"00:00",home:"TUN",away:"JPN"},
+  {id:35,group:"F",date:"2026-06-20",time:"13:00",home:"NED",away:"SWE"},
+  {id:36,group:"F",date:"2026-06-20",time:"00:00",home:"TUN",away:"JPN"},
   {id:37,group:"H",date:"2026-06-21",time:"18:00",home:"URU",away:"CPV"},
   {id:38,group:"H",date:"2026-06-21",time:"12:00",home:"ESP",away:"KSA"},
   {id:39,group:"G",date:"2026-06-21",time:"15:00",home:"BEL",away:"IRN"},
@@ -319,9 +260,9 @@ function convertTime(t) {
   return {est:t,ecu,cdmx};
 }
 
-function calcGroupStandings(groupTeams,matches,results,discipline={}) {
+function calcGroupStandings(groupTeams,matches,results) {
   const table={};
-  groupTeams.forEach(t=>{table[t]={code:t,pts:0,pj:0,pg:0,pe:0,pp:0,gf:0,gc:0,dg:0};});
+  groupTeams.forEach(t=>{table[t]={pts:0,pj:0,pg:0,pe:0,pp:0,gf:0,gc:0,dg:0};});
   matches.forEach(m=>{
     const r=results[m.id];
     if(!r||r.homeGoals===""||r.awayGoals==="") return;
@@ -334,46 +275,12 @@ function calcGroupStandings(groupTeams,matches,results,discipline={}) {
     else if(ag>hg){at.pts+=3;at.pg++;ht.pp++;}
     else{ht.pts++;at.pts++;ht.pe++;at.pe++;}
   });
-  const teams=Object.values(table);
-  // Enfrentamiento directo (head-to-head): solo cuenta los partidos entre los equipos empatados.
-  function h2h(tiedCodes){
-    const h={};tiedCodes.forEach(c=>{h[c]={pts:0,gf:0,gc:0,dg:0};});
-    matches.forEach(m=>{
-      if(!tiedCodes.includes(m.home)||!tiedCodes.includes(m.away)) return;
-      const r=results[m.id];if(!r||r.homeGoals===""||r.awayGoals==="") return;
-      const hg=parseInt(r.homeGoals),ag=parseInt(r.awayGoals);if(isNaN(hg)||isNaN(ag)) return;
-      h[m.home].gf+=hg;h[m.home].gc+=ag;h[m.home].dg+=hg-ag;h[m.away].gf+=ag;h[m.away].gc+=hg;h[m.away].dg+=ag-hg;
-      if(hg>ag)h[m.home].pts+=3;else if(ag>hg)h[m.away].pts+=3;else{h[m.home].pts++;h[m.away].pts++;}
-    });
-    return h;
-  }
-  // Cadena oficial de desempate — FIFA Artículo 13 (orden correcto):
-  return teams.sort((a,b)=>{
-    // 1) Puntos totales del grupo
-    if(b.pts!==a.pts) return b.pts-a.pts;
-    // Paso 1: entre los equipos empatados EN PUNTOS, primero el enfrentamiento directo.
-    const tied=teams.filter(t=>t.pts===a.pts).map(t=>t.code);
-    if(tied.length>=2&&tied.includes(a.code)&&tied.includes(b.code)){
-      const hh=h2h(tied);const ha=hh[a.code],hb=hh[b.code];
-      // 2) PTS directos  3) DG directa  4) GF directos
-      if(hb.pts!==ha.pts) return hb.pts-ha.pts;
-      if(hb.dg!==ha.dg) return hb.dg-ha.dg;
-      if(hb.gf!==ha.gf) return hb.gf-ha.gf;
-    }
-    // Paso 2: diferencia de goles y goles a favor en TODO el grupo
-    if(b.dg!==a.dg) return b.dg-a.dg;
-    if(b.gf!==a.gf) return b.gf-a.gf;
-    // Paso 2 f) Conducta / fair play: menos puntos de penalización es mejor
-    const da=conductPts(discipline[a.code]),db=conductPts(discipline[b.code]);
-    if(da!==db) return da-db;
-    // Paso 3: Ranking FIFA (número más bajo = mejor)
-    return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
-  });
+  return Object.entries(table).sort((a,b)=>b[1].pts-a[1].pts||b[1].dg-a[1].dg||b[1].gf-a[1].gf).map(([code,s])=>({code,...s}));
 }
 
-function allStandings(results,discipline={}) {
+function allStandings(results) {
   const out={};
-  Object.entries(GROUPS).forEach(([g,teams])=>{out[g]=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results,discipline);});
+  Object.entries(GROUPS).forEach(([g,teams])=>{out[g]=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results);});
   return out;
 }
 
@@ -409,7 +316,7 @@ function assignBestThirds(standings, _discipline={}) {
       if(b.pts!==a.pts) return b.pts-a.pts;
       if(b.dg!==a.dg) return b.dg-a.dg;
       if(b.gf!==a.gf) return b.gf-a.gf;
-      const da=conductPts(_discipline?.[a.code]), db=conductPts(_discipline?.[b.code]);
+      const da=_discipline?.[a.code]?.pts??0, db=_discipline?.[b.code]?.pts??0;
       if(da!==db) return da-db;
       return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
     });
@@ -439,10 +346,11 @@ function resolveSlotFull(slot,standings,kw,results,bestThirdsCache) {
     const st=standings[g];
     if(!st||!st[pos]||st[pos].pj===0) return null;
     const provisional=!groupComplete(g,results);
-    return {code:st[pos].code, provisional};
+    // Dynamic label: current position in group
+    const posLabel=`${slot[0]}° Grupo ${g}`;
+    return {code:st[pos].code, provisional, label:posLabel};
   }
   if(/^3[A-L]{2,}$/.test(slot)){
-    // Find which slot ID this corresponds to
     const slotGroups = slot.slice(1).split("").sort().join("");
     const slotId = Object.entries(BEST_THIRD_SLOTS).find(([,groups])=>
       [...groups].sort().join("")===slotGroups
@@ -452,15 +360,17 @@ function resolveSlotFull(slot,standings,kw,results,bestThirdsCache) {
     if(!assigned) return null;
     const groups = BEST_THIRD_SLOTS[parseInt(slotId)];
     const provisional = !groups.every(g=>groupComplete(g,results));
-    return {code:assigned.code, provisional};
+    // Label shows the group combination
+    const posLabel=`Mejor 3° (${groups.join("/")})`;
+    return {code:assigned.code, provisional, label:posLabel};
   }
   if(/^W\d+$/.test(slot)){
     const w=kw[parseInt(slot.slice(1))];
-    return w?{code:w.winner,provisional:!!w.provisional}:null; // hereda provisional del cruce origen
+    return w?{code:w.winner,provisional:false,label:`Gan. P${slot.slice(1)}`}:null;
   }
   if(/^L\d+$/.test(slot)){
     const w=kw[parseInt(slot.slice(1))];
-    return w?{code:w.loser,provisional:!!w.provisional}:null;
+    return w?{code:w.loser,provisional:false,label:`Per. P${slot.slice(1)}`}:null;
   }
   return null;
 }
@@ -478,19 +388,10 @@ function computeKnockout(results,standings,bestThirds={}) {
     if(!r||r.homeGoals===""||r.awayGoals==="") return;
     const hg=parseInt(r.homeGoals),ag=parseInt(r.awayGoals);
     if(isNaN(hg)||isNaN(ag)) return;
-    const hRes=resolveSlotFull(m.homeSlot,standings,kw,results,bestThirds);
-    const aRes=resolveSlotFull(m.awaySlot,standings,kw,results,bestThirds);
-    if(!hRes||!aRes) return;
-    const home=hRes.code,away=aRes.code;
-    const provisional=hRes.provisional||aRes.provisional; // si algún equipo aún es provisional, el ganador también
-    let winner,loser;
-    if(hg>ag){winner=home;loser=away;}
-    else if(ag>hg){winner=away;loser=home;}
-    else{ // empate en eliminatoria: lo decide el ganador por penales (r.pen); por defecto, el local
-      const pen=r.pen==="away"?away:home;
-      winner=pen; loser=(pen===home?away:home);
-    }
-    kw[m.id]={winner,loser,provisional};
+    const home=resolveSlot(m.homeSlot,standings,kw,results,bestThirds);
+    const away=resolveSlot(m.awaySlot,standings,kw,results,bestThirds);
+    if(!home||!away) return;
+    kw[m.id]={winner:hg>=ag?home:away,loser:hg>=ag?away:home};
   });
   return kw;
 }
@@ -532,12 +433,11 @@ function calcGlobalRanking(results,discipline={}) {
     return h;
   }
   return teams.sort((a,b)=>{
-    // 1) Puntos totales
     if(b.pts!==a.pts) return b.pts-a.pts;
-    // Mismo grupo y empatados en puntos: enfrentamiento directo PRIMERO (FIFA Art. 13).
-    // (Entre grupos distintos no hay enfrentamiento directo, así que se salta este paso.)
+    if(b.dg!==a.dg) return b.dg-a.dg;
+    if(b.gf!==a.gf) return b.gf-a.gf;
     if(a.group===b.group){
-      const tied=teams.filter(t=>t.group===a.group&&t.pts===a.pts).map(t=>t.code);
+      const tied=teams.filter(t=>t.pts===a.pts&&t.dg===a.dg&&t.gf===a.gf&&t.group===a.group).map(t=>t.code);
       if(tied.length>=2&&tied.includes(a.code)&&tied.includes(b.code)){
         const hh=h2h(tied);
         const ha=hh[a.code],hb=hh[b.code];
@@ -546,25 +446,19 @@ function calcGlobalRanking(results,discipline={}) {
         if(hb.gf!==ha.gf) return hb.gf-ha.gf;
       }
     }
-    // 2) Diferencia de goles y goles a favor en todo el grupo
-    if(b.dg!==a.dg) return b.dg-a.dg;
-    if(b.gf!==a.gf) return b.gf-a.gf;
-    // 3) Conducta (fair play) y luego Ranking FIFA
-    const da=conductPts(discipline[a.code]),db=conductPts(discipline[b.code]);
+    const da=discipline[a.code]?.pts??0,db=discipline[b.code]?.pts??0;
     if(da!==db) return da-db;
-    return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
+    const ra=FIFA_RANK[a.code]??99,rb=FIFA_RANK[b.code]??99;
+    return ra-rb;
   });
 }
 
 function calcStats(results,discipline) {
   const allMatches=[...GROUP_MATCHES,...ALL_KO];
   let totalGoals=0,totalW=0,totalD=0,totalMatches=0;
-  const byGroup={},byConf={},byBrand={};
+  const byGroup={},byConf={};
   Object.keys(GROUPS).forEach(g=>{byGroup[g]={goals:0,w:0,d:0,played:0,ta:0,tr:0};});
   Object.keys(CONFEDERATIONS).forEach(c=>{byConf[c]={goals:0,w:0,d:0,played:0,ta:0,tr:0};});
-  // Por marca: 'teams' es fijo (cuántas selecciones viste cada marca); el resto se acumula.
-  BRAND_ORDER.forEach(b=>{byBrand[b]={teams:0,goals:0,w:0,d:0,played:0,ta:0,tr:0};});
-  Object.values(BRAND).forEach(b=>{if(byBrand[b])byBrand[b].teams++;});
 
   allMatches.forEach(m=>{
     const r=results[m.id];
@@ -573,42 +467,29 @@ function calcStats(results,discipline) {
     if(isNaN(hg)||isNaN(ag)) return;
     const goals=hg+ag;
     totalGoals+=goals; totalMatches++;
-    // Victoria = cualquier partido con ganador (local O visitante); el resto, empate.
-    if(hg===ag) totalD++; else totalW++;
+    if(hg>ag) totalW++; else if(hg===ag) totalD++;
     if(m.group){
       byGroup[m.group].goals+=goals; byGroup[m.group].played++;
       if(hg>ag||ag>hg) byGroup[m.group].w++; else byGroup[m.group].d++;
     }
-    // Por confederación: a cada equipo se le acreditan SOLO los goles que metió.
-    const hConf=TEAM_CONF[m.home], aConf=TEAM_CONF[m.away];
-    if(hConf&&byConf[hConf]){ byConf[hConf].goals+=hg; byConf[hConf].played++; }
-    if(aConf&&byConf[aConf]){ byConf[aConf].goals+=ag; byConf[aConf].played++; }
-    if(hg>ag){ if(hConf&&byConf[hConf])byConf[hConf].w++; }
-    else if(ag>hg){ if(aConf&&byConf[aConf])byConf[aConf].w++; }
-    else { if(hConf&&byConf[hConf])byConf[hConf].d++; if(aConf&&byConf[aConf])byConf[aConf].d++; }
-    // Por marca: mismo criterio que confederación (goles propios, partidos, victorias/empates).
-    const hBrand=BRAND[m.home], aBrand=BRAND[m.away];
-    if(hBrand&&byBrand[hBrand]){ byBrand[hBrand].goals+=hg; byBrand[hBrand].played++; }
-    if(aBrand&&byBrand[aBrand]){ byBrand[aBrand].goals+=ag; byBrand[aBrand].played++; }
-    if(hg>ag){ if(hBrand&&byBrand[hBrand])byBrand[hBrand].w++; }
-    else if(ag>hg){ if(aBrand&&byBrand[aBrand])byBrand[aBrand].w++; }
-    else { if(hBrand&&byBrand[hBrand])byBrand[hBrand].d++; if(aBrand&&byBrand[aBrand])byBrand[aBrand].d++; }
+    [m.home,m.away].forEach(code=>{
+      const conf=TEAM_CONF[code];
+      if(conf){byConf[conf].goals+=goals;}
+    });
   });
 
   // Add discipline stats
   Object.entries(discipline||{}).forEach(([code,d])=>{
     const g=Object.entries(GROUPS).find(([,t])=>t.includes(code))?.[0];
     const conf=TEAM_CONF[code];
-    const brand=BRAND[code];
     if(g&&byGroup[g]){byGroup[g].ta+=(d.ta||0);byGroup[g].tr+=(d.tr||0);}
     if(conf&&byConf[conf]){byConf[conf].ta+=(d.ta||0);byConf[conf].tr+=(d.tr||0);}
-    if(brand&&byBrand[brand]){byBrand[brand].ta+=(d.ta||0);byBrand[brand].tr+=(d.tr||0);}
   });
 
   const totalTA=Object.values(discipline||{}).reduce((s,d)=>s+(d.ta||0),0);
   const totalTR=Object.values(discipline||{}).reduce((s,d)=>s+(d.tr||0),0);
 
-  return {totalGoals,totalMatches,totalW,totalD,totalTA,totalTR,byGroup,byConf,byBrand};
+  return {totalGoals,totalMatches,totalW,totalD,totalTA,totalTR,byGroup,byConf};
 }
 
 // ─────────────────────────────────────────────
@@ -628,26 +509,6 @@ export default function App() {
   const [filterGroup,setFilterGroup]=useState("Todos");
   const [countdown,setCountdown]=useState("");
 
-  // ── Sincronización compartida ──────────────────────────────
-  const [sync,setSync]=useState(API_URL?"…":"local"); // estado visible: … | online | offline | local
-  const hydrated=useRef(false);     // ya cargamos del servidor al menos una vez
-  const lastEdit=useRef(0);          // momento de la última edición local (timestamp)
-  const remoteResults=useRef(false); // marca: el próximo cambio de results vino del servidor
-  const remoteDisc=useRef(false);    // marca: el próximo cambio de discipline vino del servidor
-  const pending=useRef({});          // payload acumulado a enviar
-  const postTimer=useRef(null);      // temporizador del debounce de envío
-
-  // Envía al servidor agrupando cambios rápidos (debounce de 700 ms).
-  const pushState=(payload)=>{
-    if(!API_URL) return;             // sin Worker configurado: solo guardado local
-    pending.current={...pending.current,...payload};
-    clearTimeout(postTimer.current);
-    postTimer.current=setTimeout(()=>{
-      const body=pending.current; pending.current={};
-      apiPost(body).then(()=>setSync("online")).catch(()=>setSync("offline"));
-    },700);
-  };
-
   useEffect(()=>{
     const target=new Date("2026-06-11T15:00:00-04:00");
     const tick=()=>{
@@ -659,57 +520,13 @@ export default function App() {
     tick();const iv=setInterval(tick,1000);return()=>clearInterval(iv);
   },[]);
 
-  // Guarda resultados en local SIEMPRE (caché offline) y los sube al servidor
-  // solo si el cambio lo hizo el usuario (no si vino del propio servidor).
   useEffect(()=>{
-    try{localStorage.setItem("fwc2026_v2",JSON.stringify(results));}catch{}
-    if(remoteResults.current){remoteResults.current=false;return;} // cambio venido del servidor: no reenviar
-    if(!hydrated.current) return;                                  // aún no sincronizamos al abrir
-    lastEdit.current=Date.now();
-    pushState({results});                                          // sube el marcador a Notion
-    setSaved(true);const t=setTimeout(()=>setSaved(false),1200);return()=>clearTimeout(t);
+    try{localStorage.setItem("fwc2026_v2",JSON.stringify(results));setSaved(true);const t=setTimeout(()=>setSaved(false),1200);return()=>clearTimeout(t);}catch{}
   },[results]);
 
-  // Igual para las tarjetas (discipline).
   useEffect(()=>{
     try{localStorage.setItem("fwc2026_discipline",JSON.stringify(discipline));}catch{}
-    if(remoteDisc.current){remoteDisc.current=false;return;}
-    if(!hydrated.current) return;
-    lastEdit.current=Date.now();
-    pushState({discipline});
   },[discipline]);
-
-  // Carga el estado compartido al abrir y sondea cada 15 s para ver los cambios de otros.
-  useEffect(()=>{
-    if(!API_URL){hydrated.current=true;return;}   // sin Worker: la app queda en modo solo local
-    let alive=true;
-    const pull=async(initial=false)=>{
-      try{
-        const data=await apiGet();
-        if(!alive) return;
-        // No pisar una edición local muy reciente (ventana de 6 s) para no borrar lo que escribes.
-        if(!initial && Date.now()-lastEdit.current<6000){setSync("online");return;}
-        const sr=data.results||{}, sd=data.discipline||{};
-        const serverEmpty=Object.keys(sr).length===0 && Object.keys(sd).length===0;
-        if(initial && serverEmpty){
-          // Primera vez y servidor vacío: si ya tenías datos locales, los subimos (migración).
-          hydrated.current=true; setSync("online");
-          if(hasLocalData(results,discipline)) pushState({results,discipline});
-          return;
-        }
-        if(Object.keys(sr).length){ remoteResults.current=true; setResults({...initResults(),...sr}); }
-        if(Object.keys(sd).length){ remoteDisc.current=true; setDiscipline({...emptyDiscipline(),...sd}); }
-        hydrated.current=true; setSync("online");
-      }catch{
-        if(alive){ hydrated.current=true; setSync("offline"); } // sin conexión: seguimos con la caché local
-      }
-    };
-    pull(true);
-    const iv=setInterval(()=>pull(false),15000);
-    const onVis=()=>{ if(document.visibilityState==="visible") pull(false); };
-    document.addEventListener("visibilitychange",onVis);
-    return ()=>{alive=false;clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
-  },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setGoals=(id,side,val)=>setResults(p=>({...p,[id]:{...p[id],[side]:val}}));
   const setDiscField=(code,field,val)=>{
@@ -722,19 +539,11 @@ export default function App() {
     }
   };
 
-  const standings=useMemo(()=>allStandings(results,discipline),[results,discipline]);
+  const standings=useMemo(()=>allStandings(results),[results]);
   const bestThirds=useMemo(()=>assignBestThirds(standings,discipline),[standings,discipline]);
   const knockoutWinners=useMemo(()=>computeKnockout(results,standings,bestThirds),[results,standings,bestThirds]);
   const globalRanking=useMemo(()=>calcGlobalRanking(results,discipline),[results,discipline]);
   const stats=useMemo(()=>calcStats(results,discipline),[results,discipline]);
-  // Clasificación REAL (misma fuente que el bracket): 1°/2° de cada grupo + 8 mejores terceros.
-  // "directo" = 1° o 2° de grupo; "tercero" = mejor 3° seleccionado.
-  const qualifiedInfo=useMemo(()=>{
-    const info={};
-    Object.values(standings).forEach(st=>{ if(st[0])info[st[0].code]="directo"; if(st[1])info[st[1].code]="directo"; });
-    Object.values(bestThirds).forEach(b=>{ if(b&&b.code)info[b.code]="tercero"; });
-    return info;
-  },[standings,bestThirds]);
   const filtered=filterGroup==="Todos"?GROUP_MATCHES:GROUP_MATCHES.filter(m=>m.group===filterGroup);
 
   const TABS=[["grupos","GRUPOS"],["partidos","PARTIDOS"],["posiciones","POSICIONES"],["bracket","BRACKET"],["estadisticas","ESTADÍSTICAS"],["disciplina","DISCIPLINA"]];
@@ -754,10 +563,6 @@ export default function App() {
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
             <div style={{fontSize:13,fontWeight:700,color:"#7dd3fc",fontVariantNumeric:"tabular-nums"}}>{countdown}</div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              {/* Indicador de sincronización compartida */}
-              <span style={{fontSize:10,color:sync==="online"?"#4ade80":sync==="offline"?"#f87171":sync==="local"?"#94a3b8":"#fbbf24"}}>
-                {sync==="online"?"🟢 en línea":sync==="offline"?"🔴 sin conexión":sync==="local"?"📴 solo local":"⏳ sincronizando…"}
-              </span>
               {saved&&<span style={{fontSize:10,color:"#4ade80"}}>✓ guardado</span>}
               <button onClick={reset} style={{background:"transparent",border:`1px solid #334155`,borderRadius:4,color:"#94a3b8",padding:"3px 8px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}
                 onMouseEnter={e=>{e.currentTarget.style.color="#f87171";e.currentTarget.style.borderColor="#f87171";}}
@@ -788,7 +593,7 @@ export default function App() {
             <SectionTitle>Grupos del Torneo</SectionTitle>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:16}}>
               {Object.entries(GROUPS).map(([g,teams])=>{
-                const st=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results,discipline);
+                const st=calcGroupStandings(teams,GROUP_MATCHES.filter(m=>m.group===g),results);
                 const done=groupComplete(g,results);
                 return(
                   <div key={g} style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:8,overflow:"hidden",boxShadow:C.shadow}}>
@@ -874,14 +679,8 @@ export default function App() {
         {tab==="posiciones"&&(
           <div>
             <SectionTitle>Ranking Global — 48 Equipos</SectionTitle>
-            <div style={{fontSize:11,color:C.textMute,marginBottom:6}}>
-              Ranking de poder de los 48 equipos. Desempate (FIFA Art. 13): PTS → Enfrentamiento directo (PTS/DG/GF) → DG → GF → Conducta → Ranking FIFA
-            </div>
-            {/* Leyenda: el resaltado refleja la clasificación REAL (igual que el bracket), no la posición en esta lista */}
-            <div style={{fontSize:11,color:C.textSub,marginBottom:12,display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
-              <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span style={{width:12,height:12,borderRadius:3,background:C.goldLight,border:`1px solid ${C.gold}`}}/>1° o 2° de grupo (clasifica directo)</span>
-              <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span style={{width:12,height:12,borderRadius:3,background:C.blueLight,border:`1px solid ${C.blue}`}}/>Mejor 3° (clasifica)</span>
-              <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span style={{width:12,height:12,borderRadius:3,background:"#f1f5f9",border:`1px solid ${C.cardBorder}`}}/>No clasifica (provisional)</span>
+            <div style={{fontSize:11,color:C.textMute,marginBottom:12}}>
+              Desempate: PTS → DG → GF → H2H PTS → H2H DG → H2H GF → Disciplina → Ranking FIFA
             </div>
             <div style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:8,overflow:"hidden",boxShadow:C.shadow}}>
               <div style={{overflowX:"auto"}}>
@@ -894,12 +693,10 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {globalRanking.map((row,i)=>{
-                      const q=qualifiedInfo[row.code]; // "directo" | "tercero" | undefined
-                      return (
-                      <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:q==="directo"?C.goldLight+"55":q==="tercero"?C.blueLight+"55":"transparent"}}>
+                    {globalRanking.map((row,i)=>(
+                      <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:i<2?C.goldLight+"55":i<24?C.blueLight+"33":"transparent"}}>
                         <td style={{padding:"7px 8px",textAlign:"center"}}>
-                          <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,fontSize:11,fontWeight:700,background:q==="directo"?C.gold:q==="tercero"?C.blueLight:"#f1f5f9",color:q==="directo"?C.header:q==="tercero"?C.blue:C.textMute}}>{i+1}</span>
+                          <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,fontSize:11,fontWeight:700,background:i===0?C.gold:i<3?C.blueLight:"#f1f5f9",color:i===0?C.header:i<3?C.blue:C.textMute}}>{i+1}</span>
                         </td>
                         <td style={{padding:"7px 6px"}}>
                           <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -917,7 +714,7 @@ export default function App() {
                         <td style={{padding:"7px 6px",textAlign:"center",fontWeight:600,fontSize:12,color:row.dg>0?C.blue:row.dg<0?C.red:C.textSub}}>{row.dg>0?"+":""}{row.dg}</td>
                         <td style={{padding:"7px 6px",textAlign:"center",fontWeight:800,fontSize:15,color:C.gold}}>{row.pts}</td>
                       </tr>
-                    );})}
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -932,7 +729,7 @@ export default function App() {
 
         {/* ── ESTADÍSTICAS ── */}
         {tab==="estadisticas"&&(
-          <StatsView stats={stats} results={results} qualifiedInfo={qualifiedInfo}/>
+          <StatsView stats={stats} results={results}/>
         )}
 
         {/* ── DISCIPLINA ── */}
@@ -940,7 +737,7 @@ export default function App() {
           <div>
             <SectionTitle>Tabla de Disciplina</SectionTitle>
             <div style={{fontSize:11,color:C.textMute,marginBottom:12}}>
-              Captura TA y TR · PTS = puntos de conducta FIFA, calculados solos (1 × amarilla + 4 × roja) · Criterio de desempate
+              Actualiza diariamente · TA = Amarillas · TR = Rojas · PTS = Puntos FIFA · Criterio #7 en ranking global
             </div>
             <div style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:8,overflow:"hidden",boxShadow:C.shadow}}>
               <div style={{overflowX:"auto"}}>
@@ -958,7 +755,7 @@ export default function App() {
                   <tbody>
                     {Object.values(GROUPS).flat()
                       .map(code=>({code,group:Object.entries(GROUPS).find(([,t])=>t.includes(code))[0],...(discipline[code]||{ta:0,tr:0,pts:0})}))
-                      .sort((a,b)=>conductPts(b)-conductPts(a)||(b.tr||0)-(a.tr||0)||(b.ta||0)-(a.ta||0))
+                      .sort((a,b)=>(b.pts||0)-(a.pts||0)||(b.ta||0)-(a.ta||0))
                       .map((row,i)=>(
                       <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:i%2===0?"transparent":"#f8fafc"}}>
                         <td style={{padding:"6px 10px",textAlign:"center",color:C.textMute,fontSize:11}}>{i+1}</td>
@@ -983,8 +780,9 @@ export default function App() {
                             style={{width:44,height:32,textAlign:"center",fontSize:14,fontWeight:700,background:"#fef2f2",border:`1px solid #fca5a5`,borderRadius:5,color:C.red,fontFamily:"inherit",outline:"none"}}/>
                         </td>
                         <td style={{padding:"6px 10px",textAlign:"center"}}>
-                          {/* PTS calculado automáticamente desde TA/TR (no editable) */}
-                          <span title="Calculado: 1 × amarilla + 4 × roja" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:52,height:32,fontSize:14,fontWeight:800,background:C.goldLight,border:`1px solid ${C.gold}`,borderRadius:5,color:C.gold}}>{conductPts(discipline[row.code])}</span>
+                          <input type="number" min="0" value={discipline[row.code]?.pts??0}
+                            onChange={e=>setDiscField(row.code,"pts",e.target.value)}
+                            style={{width:52,height:32,textAlign:"center",fontSize:14,fontWeight:800,background:C.goldLight,border:`1px solid ${C.gold}`,borderRadius:5,color:C.gold,fontFamily:"inherit",outline:"none"}}/>
                         </td>
                       </tr>
                     ))}
@@ -1040,7 +838,9 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestT
           const awayRes=resolveSlotFull(m.awaySlot,standings,knockoutWinners,groupResults,bestThirds);
           return <KOMatchCard key={m.id} match={m}
             homeTeam={homeRes?.code||null} homeProv={homeRes?.provisional||false}
+            homeSlotLabel={homeRes?.label||slotLabel(m.homeSlot)}
             awayTeam={awayRes?.code||null} awayProv={awayRes?.provisional||false}
+            awaySlotLabel={awayRes?.label||slotLabel(m.awaySlot)}
             result={results[m.id]} onSet={onSet}/>;
         })}
       </div>
@@ -1051,28 +851,25 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestT
 // ─────────────────────────────────────────────
 // STATS VIEW
 // ─────────────────────────────────────────────
-function StatsView({stats,results,qualifiedInfo={}}) {
-  const {totalGoals,totalMatches,totalW,totalD,totalTA,totalTR,byGroup,byConf,byBrand={}}=stats;
+function StatsView({stats,results}) {
+  const {totalGoals,totalMatches,totalW,totalD,totalTA,totalTR,byGroup,byConf}=stats;
   const avgGoals=totalMatches>0?(totalGoals/totalMatches).toFixed(2):0;
   const confColors={"CONMEBOL":"#0ea5e9","UEFA":"#3b82f6","CONCACAF":"#10b981","CAF":"#f59e0b","AFC":"#ef4444","OFC":"#8b5cf6"};
 
   // Bar chart helper
-  const BarChart=({data,colorKey,colors,label,valueKey="goals"})=>{
+  const BarChart=({data,colorKey,label,valueKey="goals"})=>{
     const max=Math.max(...data.map(d=>d[valueKey]||0),1);
     return(
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {data.map(d=>{
-          const bg=colors?(colors[d.key]||C.blue):(colorKey?confColors[d.key]||C.blue:C.blue);
-          return(
+        {data.map(d=>(
           <div key={d.key} style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{width:90,fontSize:11,fontWeight:700,color:C.textSub,textAlign:"right",flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.key}</div>
+            <div style={{width:80,fontSize:11,fontWeight:700,color:C.textSub,textAlign:"right",flexShrink:0}}>{d.key}</div>
             <div style={{flex:1,background:"#f1f5f9",borderRadius:4,height:20,overflow:"hidden"}}>
-              <div style={{width:`${((d[valueKey]||0)/max)*100}%`,height:"100%",background:bg,borderRadius:4,minWidth:d[valueKey]>0?4:0,transition:"width .3s"}}/>
+              <div style={{width:`${((d[valueKey]||0)/max)*100}%`,height:"100%",background:colorKey?confColors[d.key]||C.blue:C.blue,borderRadius:4,minWidth:d[valueKey]>0?4:0,transition:"width .3s"}}/>
             </div>
-            <div style={{width:36,fontSize:12,fontWeight:700,color:C.text,textAlign:"right"}}>{d[valueKey]||0}</div>
+            <div style={{width:32,fontSize:12,fontWeight:700,color:C.text}}>{d[valueKey]||0}</div>
           </div>
-          );
-        })}
+        ))}
       </div>
     );
   };
@@ -1104,24 +901,6 @@ function StatsView({stats,results,qualifiedInfo={}}) {
 
   const groupData=Object.entries(byGroup).map(([k,v])=>({key:k,...v}));
   const confData=Object.entries(byConf).map(([k,v])=>({key:k,...v}));
-
-  // ── Datos por MARCA de uniforme ──────────────────────────────
-  const brandData=BRAND_ORDER.map(b=>({key:b,...(byBrand[b]||{teams:0,goals:0,w:0,d:0,played:0,ta:0,tr:0})}));
-  // Reparto (cuántas selecciones por marca) y goles, ordenados de mayor a menor.
-  const brandTeams=[...brandData].filter(d=>d.teams>0).sort((a,b)=>b.teams-a.teams);
-  const brandGoals=[...brandData].sort((a,b)=>b.goals-a.goals);
-  // Rendimiento: puntos promedio por equipo. Las marcas de 1 equipo se agrupan en "Otras".
-  const big=brandData.filter(d=>d.teams>=2);
-  const small=brandData.filter(d=>d.teams===1);
-  const smallTeams=small.reduce((s,d)=>s+d.teams,0);
-  const smallPts=small.reduce((s,d)=>s+d.w*3+d.d,0);
-  const brandPerf=[...big.map(d=>({key:d.key,avg:d.teams?+((d.w*3+d.d)/d.teams).toFixed(2):0})),
-    ...(smallTeams?[{key:"Otras",avg:+(smallPts/smallTeams).toFixed(2)}]:[])].sort((a,b)=>b.avg-a.avg);
-  // Marcas entre los clasificados (1°/2° de grupo + mejores terceros).
-  const qualBrand={};
-  Object.keys(qualifiedInfo||{}).forEach(code=>{const b=BRAND[code];if(b)qualBrand[b]=(qualBrand[b]||0)+1;});
-  const totalQual=Object.keys(qualifiedInfo||{}).length;
-  const brandQual=BRAND_ORDER.map(b=>({key:b,q:qualBrand[b]||0})).filter(d=>d.q>0).sort((a,b)=>b.q-a.q);
 
   return(
     <div>
@@ -1165,6 +944,7 @@ function StatsView({stats,results,qualifiedInfo={}}) {
             <DonutChart slices={[
               {label:"Victorias",value:totalW,color:C.green},
               {label:"Empates",value:totalD,color:"#9333ea"},
+              {label:"Pendientes",value:Math.max(0,totalMatches-totalW-totalD),color:"#e2e8f0"},
             ]}/>
             <Legend items={[
               {label:`Victorias: ${totalW}`,color:C.green},
@@ -1197,27 +977,6 @@ function StatsView({stats,results,qualifiedInfo={}}) {
         <Card title="🟥 Tarjetas Rojas por Confederación">
           <BarChart data={confData} colorKey valueKey="tr"/>
           <Legend items={confData.map(d=>({label:d.key,color:confColors[d.key]||C.blue}))}/>
-        </Card>
-
-        {/* ── MARCAS DE UNIFORME ── */}
-        <Card title="👕 Reparto de Marcas (48 selecciones)">
-          <BarChart data={brandTeams} colors={BRAND_COLORS} valueKey="teams"/>
-        </Card>
-
-        <Card title="👕 Goles por Marca">
-          <BarChart data={brandGoals} colors={BRAND_COLORS} valueKey="goals"/>
-        </Card>
-
-        <Card title="👕 Rendimiento por Marca (pts promedio/equipo)">
-          <div style={{fontSize:10,color:C.textMute,marginBottom:8}}>Marcas de 1 selección agrupadas como "Otras".</div>
-          <BarChart data={brandPerf} colors={BRAND_COLORS} valueKey="avg"/>
-        </Card>
-
-        <Card title="👕 Marcas entre Clasificados">
-          <div style={{fontSize:10,color:C.textMute,marginBottom:8}}>{totalQual} de 32 clasificados (1°/2° de grupo + mejores 3°).</div>
-          {brandQual.length>0
-            ? <BarChart data={brandQual} colors={BRAND_COLORS} valueKey="q"/>
-            : <div style={{fontSize:12,color:C.textMute,padding:"8px 0"}}>Aún no hay equipos clasificados.</div>}
         </Card>
 
       </div>
@@ -1283,7 +1042,7 @@ function MatchCard({match,result,onSet}) {
   );
 }
 
-function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,result,onSet}) {
+function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,homeSlotLabel,awaySlotLabel,result,onSet}) {
   const resolved=!!homeTeam&&!!awayTeam;
   const provisional=(homeProv||awayProv)&&resolved;
   const played=result.homeGoals!==""&&result.awayGoals!=="";
@@ -1313,35 +1072,24 @@ function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,result,onSet}) {
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
-        <TeamBlock code={homeTeam} fallback={slotLabel(match.homeSlot)} win={hWin} align="right" prov={homeProv}/>
+        <TeamBlock code={homeTeam} fallback={homeSlotLabel} win={hWin} align="right" prov={homeProv} slotLabel={homeSlotLabel}/>
         <div style={{display:"flex",alignItems:"center",gap:3}}>
           <ScoreInput value={result.homeGoals} onChange={v=>onSet(match.id,"homeGoals",v)} win={hWin} draw={draw} played={played} disabled={!resolved||provisional}/>
           <span style={{fontSize:14,color:C.textMute,fontWeight:700}}>:</span>
           <ScoreInput value={result.awayGoals} onChange={v=>onSet(match.id,"awayGoals",v)} win={aWin} draw={draw} played={played} disabled={!resolved||provisional}/>
         </div>
-        <TeamBlock code={awayTeam} fallback={slotLabel(match.awaySlot)} win={aWin} align="left" prov={awayProv}/>
+        <TeamBlock code={awayTeam} fallback={awaySlotLabel} win={aWin} align="left" prov={awayProv} slotLabel={awaySlotLabel}/>
       </div>
       {draw&&played&&(
-        <div style={{marginTop:6,fontSize:10,background:"#fffbeb",borderRadius:4,padding:"4px 6px"}}>
-          <div style={{textAlign:"center",color:"#92400e",marginBottom:4,fontWeight:700}}>Empate — ¿quién ganó por penales?</div>
-          <div style={{display:"flex",gap:6,justifyContent:"center"}}>
-            {[["home",homeTeam],["away",awayTeam]].map(([side,code])=>{
-              const sel=(result.pen||"home")===side; // por defecto, el local
-              return(
-                <button key={side} onClick={()=>onSet(match.id,"pen",side)} disabled={provisional} style={{
-                  flex:1,maxWidth:120,padding:"4px 6px",borderRadius:4,cursor:provisional?"not-allowed":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,
-                  border:`1px solid ${sel?C.gold:C.cardBorder}`,background:sel?C.goldLight:C.card,color:sel?C.header:C.textSub
-                }}>{sel?"✓ ":""}{code} (pen)</button>
-              );
-            })}
-          </div>
+        <div style={{textAlign:"center",marginTop:6,fontSize:10,color:"#92400e",background:"#fffbeb",borderRadius:4,padding:"3px 6px"}}>
+          Empate — pasa local por defecto (ajusta si hubo penales)
         </div>
       )}
     </div>
   );
 }
 
-function TeamBlock({code,fallback,win,align,prov}) {
+function TeamBlock({code,fallback,win,align,prov,slotLabel}) {
   return(
     <div style={{flex:1,textAlign:align,minWidth:0}}>
       <div style={{fontSize:20,lineHeight:1.1}}>{code?FLAGS[code]:"🏳️"}</div>
@@ -1349,7 +1097,8 @@ function TeamBlock({code,fallback,win,align,prov}) {
         {code||fallback||"TBD"}
       </div>
       {code&&<div style={{fontSize:9,color:C.textMute,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{TEAM_NAMES[code]}</div>}
-      {prov&&code&&<div style={{fontSize:8,fontWeight:700,color:"#92400e",background:"#fffbeb",borderRadius:2,padding:"1px 3px",display:"inline-block",marginTop:1}}>PROV.</div>}
+      {slotLabel&&code&&<div style={{fontSize:9,color:prov?"#92400e":C.blue,background:prov?"#fffbeb":C.blueLight,borderRadius:2,padding:"1px 4px",display:"inline-block",marginTop:2,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{slotLabel}{prov?" · PROV.":""}</div>}
+      {!code&&fallback&&<div style={{fontSize:9,color:C.textMute,marginTop:2}}>{fallback}</div>}
     </div>
   );
 }
