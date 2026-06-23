@@ -829,6 +829,7 @@ export default function App() {
 // ─────────────────────────────────────────────
 function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestThirds}) {
   const [phase,setPhase]=useState("r32");
+  const [view,setView]=useState("cards"); // "cards" | "tree"
   const phases=[
     {key:"r32",label:"Dieciseisavos",matches:R32_FIXTURE},
     {key:"r16",label:"Octavos",matches:R16_FIXTURE},
@@ -837,31 +838,190 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestT
     {key:"final",label:"Final",matches:FINAL_FIXTURE},
   ];
   const current=phases.find(p=>p.key===phase);
+
+  // Helper to get team info for tree
+  const getTeam=(slot)=>resolveSlotFull(slot,standings,knockoutWinners,groupResults,bestThirds);
+
   return(
     <div>
       <SectionTitle>Fase Eliminatoria</SectionTitle>
-      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
-        {phases.map(p=>(
-          <button key={p.key} onClick={()=>setPhase(p.key)} style={{
-            padding:"7px 14px",border:`1px solid ${phase===p.key?C.gold:C.cardBorder}`,borderRadius:4,cursor:"pointer",
-            background:phase===p.key?C.gold:C.card,
-            color:phase===p.key?C.header:C.textSub,
-            fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1,
-            boxShadow:C.shadow,
-          }}>{p.label}</button>
-        ))}
+      {/* View toggle */}
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        <button onClick={()=>setView("cards")} style={{padding:"7px 16px",border:`1px solid ${view==="cards"?C.gold:C.cardBorder}`,borderRadius:4,cursor:"pointer",background:view==="cards"?C.gold:C.card,color:view==="cards"?C.header:C.textSub,fontFamily:"inherit",fontSize:12,fontWeight:700,boxShadow:C.shadow}}>
+          ☰ Cards
+        </button>
+        <button onClick={()=>setView("tree")} style={{padding:"7px 16px",border:`1px solid ${view==="tree"?C.gold:C.cardBorder}`,borderRadius:4,cursor:"pointer",background:view==="tree"?C.gold:C.card,color:view==="tree"?C.header:C.textSub,fontFamily:"inherit",fontSize:12,fontWeight:700,boxShadow:C.shadow}}>
+          🌳 Árbol
+        </button>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
-        {current.matches.map(m=>{
-          const homeRes=resolveSlotFull(m.homeSlot,standings,knockoutWinners,groupResults,bestThirds);
-          const awayRes=resolveSlotFull(m.awaySlot,standings,knockoutWinners,groupResults,bestThirds);
-          return <KOMatchCard key={m.id} match={m}
-            homeTeam={homeRes?.code||null} homeProv={homeRes?.provisional||false}
-            homeSlotLabel={homeRes?.label||slotLabel(m.homeSlot)}
-            awayTeam={awayRes?.code||null} awayProv={awayRes?.provisional||false}
-            awaySlotLabel={awayRes?.label||slotLabel(m.awaySlot)}
-            result={results[m.id]} onSet={onSet}/>;
-        })}
+
+      {view==="cards"&&(<>
+        <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
+          {phases.map(p=>(
+            <button key={p.key} onClick={()=>setPhase(p.key)} style={{
+              padding:"7px 14px",border:`1px solid ${phase===p.key?C.gold:C.cardBorder}`,borderRadius:4,cursor:"pointer",
+              background:phase===p.key?C.gold:C.card,color:phase===p.key?C.header:C.textSub,
+              fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1,boxShadow:C.shadow,
+            }}>{p.label}</button>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
+          {current.matches.map(m=>{
+            const homeRes=resolveSlotFull(m.homeSlot,standings,knockoutWinners,groupResults,bestThirds);
+            const awayRes=resolveSlotFull(m.awaySlot,standings,knockoutWinners,groupResults,bestThirds);
+            return <KOMatchCard key={m.id} match={m}
+              homeTeam={homeRes?.code||null} homeProv={homeRes?.provisional||false}
+              homeSlotLabel={homeRes?.label||slotLabel(m.homeSlot)}
+              awayTeam={awayRes?.code||null} awayProv={awayRes?.provisional||false}
+              awaySlotLabel={awayRes?.label||slotLabel(m.awaySlot)}
+              result={results[m.id]} onSet={onSet}/>;
+          })}
+        </div>
+      </>)}
+
+      {view==="tree"&&(
+        <BracketTree
+          standings={standings} knockoutWinners={knockoutWinners}
+          results={results} groupResults={groupResults} bestThirds={bestThirds}
+          getTeam={getTeam}/>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// BRACKET TREE VIEW
+// ─────────────────────────────────────────────
+function BracketTree({standings,knockoutWinners,results,groupResults,bestThirds,getTeam}) {
+  // Build all match resolutions
+  const r=(slot)=>getTeam(slot);
+  const score=(id)=>{
+    const res=results[id];
+    if(!res||res.homeGoals===""||res.awayGoals==="") return null;
+    return `${res.homeGoals}:${res.awayGoals}`;
+  };
+
+  // Match pairs for Dieciseisavos (left side, right side)
+  // Left bracket: M73,M74,M75,M76,M77,M78,M79,M80
+  // Right bracket: M81,M82,M83,M84,M85,M86,M87,M88
+  const leftR32  = [73,74,75,76,77,78,79,80];
+  const rightR32 = [81,82,83,84,85,86,87,88];
+  const leftR16  = [89,90,91,92];
+  const rightR16 = [93,94,95,96];
+  const leftQF   = [97,99];
+  const rightQF  = [98,100];
+  const leftSF   = [101];
+  const rightSF  = [102];
+
+  const allFixtures = [...R32_FIXTURE,...R16_FIXTURE,...QF_FIXTURE,...SF_FIXTURE,...FINAL_FIXTURE];
+  const getMatch=(id)=>allFixtures.find(m=>m.id===id);
+
+  // Team box component for tree
+  const TeamBox=({slot,matchId,side})=>{
+    const res=getTeam(slot);
+    const code=res?.code||null;
+    const prov=res?.provisional||false;
+    const label=res?.label||slotLabel(slot);
+    const matchRes=results[matchId];
+    const played=matchRes&&matchRes.homeGoals!==""&&matchRes.awayGoals!=="";
+    const hg=parseInt(matchRes?.homeGoals),ag=parseInt(matchRes?.awayGoals);
+    const isWinner=played&&((side==="home"&&hg>ag)||(side==="away"&&ag>hg));
+
+    return(
+      <div style={{
+        display:"flex",alignItems:"center",gap:6,
+        padding:"5px 8px",
+        background:isWinner?C.goldLight:code?"#fff":"#f8fafc",
+        border:`1px solid ${isWinner?C.gold:prov?"#f59e0b":code?C.cardBorder:"#e2e8f0"}`,
+        borderRadius:5,minWidth:150,maxWidth:190,
+        boxShadow:isWinner?"0 1px 4px rgba(184,134,11,.2)":C.shadow,
+      }}>
+        <span style={{fontSize:18,flexShrink:0}}>{code?FLAGS[code]:"🏳️"}</span>
+        <div style={{minWidth:0,flex:1}}>
+          <div style={{fontSize:12,fontWeight:isWinner?800:600,color:isWinner?C.gold:code?C.text:C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+            {code||"TBD"}
+          </div>
+          <div style={{fontSize:9,color:prov?"#92400e":C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+            {label}
+          </div>
+        </div>
+        {played&&<span style={{fontSize:11,fontWeight:700,color:isWinner?C.gold:C.textMute,flexShrink:0}}>{side==="home"?hg:ag}</span>}
+      </div>
+    );
+  };
+
+  // Match column entry
+  const MatchEntry=({matchId,label})=>{
+    const m=getMatch(matchId);
+    if(!m) return null;
+    const sc=score(matchId);
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:2,marginBottom:8}}>
+        {label&&<div style={{fontSize:9,color:C.textMute,fontWeight:700,letterSpacing:1,marginBottom:2}}>{label}</div>}
+        <TeamBox slot={m.homeSlot} matchId={matchId} side="home"/>
+        <div style={{display:"flex",alignItems:"center",gap:4,padding:"1px 8px"}}>
+          <div style={{flex:1,height:1,background:C.cardBorder}}/>
+          <span style={{fontSize:10,color:sc?C.gold:C.textMute,fontWeight:700}}>{sc||"vs"}</span>
+          <div style={{flex:1,height:1,background:C.cardBorder}}/>
+        </div>
+        <TeamBox slot={m.awaySlot} matchId={matchId} side="away"/>
+      </div>
+    );
+  };
+
+  // Column component
+  const Col=({title,ids,width=200})=>(
+    <div style={{display:"flex",flexDirection:"column",flexShrink:0,width,gap:0}}>
+      <div style={{fontSize:11,fontWeight:800,letterSpacing:2,color:C.gold,borderBottom:`2px solid ${C.gold}`,paddingBottom:4,marginBottom:12,textAlign:"center"}}>{title}</div>
+      {ids.map(id=><MatchEntry key={id} matchId={id}/>)}
+    </div>
+  );
+
+  // Final/3rd place special column
+  const FinalCol=()=>(
+    <div style={{display:"flex",flexDirection:"column",flexShrink:0,width:210,gap:0,alignItems:"center"}}>
+      <div style={{fontSize:11,fontWeight:800,letterSpacing:2,color:C.gold,borderBottom:`2px solid ${C.gold}`,paddingBottom:4,marginBottom:12,width:"100%",textAlign:"center"}}>FINAL</div>
+      <MatchEntry matchId={104}/>
+      <div style={{marginTop:16,width:"100%"}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.textMute,textAlign:"center",marginBottom:6}}>3er LUGAR</div>
+        <MatchEntry matchId={103}/>
+      </div>
+    </div>
+  );
+
+  // Connector lines between columns (visual spacer)
+  const Connector=()=>(
+    <div style={{display:"flex",alignItems:"center",flexShrink:0,width:20}}>
+      <div style={{width:"100%",height:1,background:C.cardBorder,borderStyle:"dashed"}}/>
+    </div>
+  );
+
+  return(
+    <div style={{overflowX:"auto",paddingBottom:16}}>
+      <div style={{display:"flex",gap:0,alignItems:"flex-start",minWidth:1400,padding:"8px 4px"}}>
+        {/* LEFT SIDE */}
+        <Col title="DIECISEISAVOS" ids={leftR32} width={210}/>
+        <Connector/>
+        <Col title="OCTAVOS" ids={leftR16} width={210}/>
+        <Connector/>
+        <Col title="CUARTOS" ids={leftQF} width={210}/>
+        <Connector/>
+        <Col title="SEMIS" ids={leftSF} width={210}/>
+        <Connector/>
+        {/* CENTER */}
+        <FinalCol/>
+        <Connector/>
+        {/* RIGHT SIDE */}
+        <Col title="SEMIS" ids={rightSF} width={210}/>
+        <Connector/>
+        <Col title="CUARTOS" ids={rightQF} width={210}/>
+        <Connector/>
+        <Col title="OCTAVOS" ids={rightR16} width={210}/>
+        <Connector/>
+        <Col title="DIECISEISAVOS" ids={rightR32} width={210}/>
+      </div>
+      <div style={{fontSize:10,color:C.textMute,marginTop:8,textAlign:"center"}}>
+        ← Desplaza horizontalmente para ver el bracket completo →
       </div>
     </div>
   );
