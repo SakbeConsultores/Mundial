@@ -1172,12 +1172,16 @@ function BracketTree({standings,knockoutWinners,results,groupResults,bestThirds,
   const W = 195;
   const CONN = 40;
 
-  const leftR32  = [73,74,75,76,77,78,79,80];
-  const rightR32 = [81,82,83,84,85,86,87,88];
-  const leftR16  = [89,90,91,92];
-  const rightR16 = [93,94,95,96];
-  const leftQF   = [97,99];
-  const rightQF  = [98,100];
+  // Mitades REALES del cuadro (FIFA): la izquierda alimenta la SF1 (M101) y la derecha la SF2 (M102).
+  // El orden de cada columna está hecho para que las llaves conecten los partidos correctos:
+  //   89=W74/W77 · 90=W73/W75 · 93=W83/W84 · 94=W81/W82 → 97=W89/W90 · 98=W93/W94 → 101=W97/W98
+  //   91=W76/W78 · 92=W79/W80 · 95=W86/W88 · 96=W85/W87 → 99=W91/W92 · 100=W95/W96 → 102=W99/W100
+  const leftR32  = [74,77,73,75,83,84,81,82];
+  const rightR32 = [76,78,79,80,86,88,85,87];
+  const leftR16  = [89,90,93,94];
+  const rightR16 = [91,92,95,96];
+  const leftQF   = [97,98];
+  const rightQF  = [99,100];
   const leftSF   = [101];
   const rightSF  = [102];
 
@@ -1540,6 +1544,10 @@ function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,result,onSet}) {
           <span style={{color:C.textSub}}>{t.ecu} ECU</span>
           <span style={{margin:"0 4px",color:C.textMute}}>·</span>
           <span style={{color:C.textSub}}>{t.cdmx} CDMX</span>
+        </div>
+        {/* Emparejamiento oficial del cruce (siempre visible para verificar el fixing) */}
+        <div style={{fontSize:10,marginTop:3,color:C.blue,fontWeight:600}}>
+          {slotLabel(match.homeSlot)} <span style={{color:C.textMute,fontWeight:400}}>vs</span> {slotLabel(match.awaySlot)}
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
