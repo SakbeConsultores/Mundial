@@ -396,10 +396,9 @@ const BEST_THIRD_SLOTS = {
   87:["D","E","I","J","L"],
 };
 
-// Assign best thirds to slots in FIFA order: M74→M77→M79→M80→M81→M82→M85→M87
-// Each slot gets the best available third from its eligible groups.
-// Once a group's third is assigned, that group is excluded from remaining slots.
-// Tiebreakers: PTS → DG → GF → Disciplina → Ranking FIFA
+// Mejores terceros: primero se eligen los 8 mejores 3os (PTS → DG → GF → Conducta → Ranking FIFA),
+// y SOLO esos 8 grupos se asignan a los 8 partidos respetando la elegibilidad de cada uno.
+// Así nunca clasifica un 3° fuera del top‑8 (antes el método greedy sí lo permitía).
 function assignBestThirds(standings, _discipline={}) {
   // Rank all 12 thirds by FIFA criteria
   const allThirds = Object.entries(standings)
@@ -414,20 +413,39 @@ function assignBestThirds(standings, _discipline={}) {
       return (FIFA_RANK[a.code]??99)-(FIFA_RANK[b.code]??99);
     });
 
-  // Process slots in FIFA order
+  // PASO 1: solo los 8 MEJORES terceros clasifican (FIFA). Los otros 4 quedan fuera.
+  const qualified = allThirds.slice(0,8);
+  const qGroups = qualified.map(t=>t.group);
+  const byGroup = {}; qualified.forEach(t=>{byGroup[t.group]=t;});
+
+  // PASO 2: asignar esos 8 grupos a los 8 partidos respetando la elegibilidad de cada uno
+  // (emparejamiento perfecto por backtracking). Así NUNCA entra un 3° fuera del top‑8.
   const SLOT_ORDER = [74,77,79,80,81,82,85,87];
   const assignment = {};
-  const usedGroups = new Set();
-
-  SLOT_ORDER.forEach(sid=>{
-    const eligibleGroups = BEST_THIRD_SLOTS[sid];
-    // Find best ranked third whose group is eligible and not yet used
-    const best = allThirds.find(t=>eligibleGroups.includes(t.group)&&!usedGroups.has(t.group));
-    if(best){
-      assignment[sid] = {code:best.code, group:best.group};
-      usedGroups.add(best.group);
-    }
-  });
+  let matched=false;
+  if(qualified.length===8){
+    matched=(function solve(i,used){
+      if(i===SLOT_ORDER.length) return true;
+      const sid=SLOT_ORDER[i];
+      for(const g of BEST_THIRD_SLOTS[sid]){
+        if(!qGroups.includes(g)||used.has(g)) continue;
+        used.add(g); assignment[sid]={code:byGroup[g].code, group:g};
+        if(solve(i+1,used)) return true;
+        used.delete(g); delete assignment[sid];
+      }
+      return false;
+    })(0,new Set());
+  }
+  // Respaldo (estado parcial del torneo, o combinación sin emparejamiento perfecto):
+  // llenar greedy pero SOLO con grupos del top‑8 (nunca con los terceros excluidos).
+  if(!matched){
+    for(const k in assignment) delete assignment[k];
+    const used=new Set();
+    SLOT_ORDER.forEach(sid=>{
+      const t=qualified.find(x=>BEST_THIRD_SLOTS[sid].includes(x.group)&&!used.has(x.group));
+      if(t){ assignment[sid]={code:t.code, group:t.group}; used.add(t.group); }
+    });
+  }
 
   return assignment;
 }
@@ -889,23 +907,24 @@ export default function App() {
                   </thead>
                   <tbody>
                     {globalRanking.map((row,i)=>{
-                      // Color tiers:
-                      // Gold: top 2 per group = top 24 if perfectly distributed, but we use actual group position
-                      // Blue: potential best thirds (positions 3 in each group, best 8 qualify)
-                      // We color by rank within group via standings
+                      // 1°/2° por posición de grupo. El 3° se pinta verde SOLO si clasifica
+                      // como uno de los 8 mejores terceros (qualifiedInfo); si no, ámbar (eliminado).
                       const groupPos = standings[row.group]?.findIndex(t=>t.code===row.code) ?? -1;
+                      const qualThird = groupPos===2 && qualifiedInfo[row.code]==="tercero";
                       const rowBg = groupPos===0 ? C.goldLight+"66"
                                   : groupPos===1 ? C.blueLight+"55"
-                                  : groupPos===2 ? "#f0fdf4"  // light green - potential best third
+                                  : qualThird ? "#f0fdf4"     // verde: 3° que clasifica
+                                  : groupPos===2 ? "#fff7ed"  // ámbar: 3° que NO clasifica
                                   : "transparent";
                       const leftBorder = groupPos===0 ? `3px solid ${C.gold}`
                                        : groupPos===1 ? `3px solid ${C.blue}`
-                                       : groupPos===2 ? "3px solid #16a34a"
+                                       : qualThird ? "3px solid #16a34a"
+                                       : groupPos===2 ? "3px solid #f59e0b"
                                        : `3px solid transparent`;
                       return(
                       <tr key={row.code} style={{borderBottom:`1px solid ${C.cardBorder}`,background:rowBg,borderLeft:leftBorder}}>
                         <td style={{padding:"7px 8px",textAlign:"center"}}>
-                          <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,fontSize:11,fontWeight:700,background:groupPos===0?C.gold:groupPos===1?C.blueLight:groupPos===2?"#dcfce7":"#f1f5f9",color:groupPos===0?C.header:groupPos===1?C.blue:groupPos===2?"#16a34a":C.textMute}}>{i+1}</span>
+                          <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,fontSize:11,fontWeight:700,background:groupPos===0?C.gold:groupPos===1?C.blueLight:qualThird?"#dcfce7":groupPos===2?"#fed7aa":"#f1f5f9",color:groupPos===0?C.header:groupPos===1?C.blue:qualThird?"#16a34a":groupPos===2?"#9a3412":C.textMute}}>{i+1}</span>
                         </td>
                         <td style={{padding:"7px 6px"}}>
                           <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -930,7 +949,8 @@ export default function App() {
               <div style={{padding:"8px 14px",fontSize:10,color:C.textMute,borderTop:`1px solid ${C.cardBorder}`,display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
                 <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:C.gold,borderRadius:2,display:"inline-block"}}/>1° de grupo</span>
                 <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:C.blue,borderRadius:2,display:"inline-block"}}/>2° de grupo</span>
-                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:"#16a34a",borderRadius:2,display:"inline-block"}}/>3° de grupo (posible clasificado)</span>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:"#16a34a",borderRadius:2,display:"inline-block"}}/>3° clasificado (mejor tercero)</span>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:"#f59e0b",borderRadius:2,display:"inline-block"}}/>3° eliminado</span>
               </div>
             </div>
           </div>
