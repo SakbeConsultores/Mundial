@@ -258,7 +258,7 @@ const R32_FIXTURE = [
   {id:73,date:"2026-06-29",time:"15:00",homeSlot:"2A",awaySlot:"2B"},
   {id:74,date:"2026-06-29",time:"16:30",homeSlot:"1E",awaySlot:"3ABCDF"},
   {id:75,date:"2026-06-29",time:"21:00",homeSlot:"1F",awaySlot:"2C"},
-  {id:76,date:"2026-06-30",time:"13:00",homeSlot:"1C",awaySlot:"2F"},
+  {id:76,date:"2026-06-29",time:"13:00",homeSlot:"1C",awaySlot:"2F"},
   {id:77,date:"2026-06-30",time:"17:00",homeSlot:"1I",awaySlot:"3CDFGH"},
   {id:78,date:"2026-06-30",time:"13:00",homeSlot:"2E",awaySlot:"2I"},
   {id:79,date:"2026-06-30",time:"21:00",homeSlot:"1A",awaySlot:"3CEFHI"},
