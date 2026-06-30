@@ -385,7 +385,7 @@ function resolveSlot(slot,standings,kw,results,bestThirdsCache) {
   return r?.code||null;
 }
 
-function computeKnockout(results,standings,bestThirds={}) {
+function computeKnockout(results,standings,bestThirds={},penaltyWinners={}) {
   const kw={};
   ALL_KO.forEach(m=>{
     const r=results[m.id];
@@ -395,7 +395,15 @@ function computeKnockout(results,standings,bestThirds={}) {
     const home=resolveSlot(m.homeSlot,standings,kw,results,bestThirds);
     const away=resolveSlot(m.awaySlot,standings,kw,results,bestThirds);
     if(!home||!away) return;
-    kw[m.id]={winner:hg>=ag?home:away,loser:hg>=ag?away:home};
+    if(hg===ag){
+      // Draw in knockout — needs penalty winner
+      const pen=penaltyWinners[m.id];
+      if(pen==="home") kw[m.id]={winner:home,loser:away};
+      else if(pen==="away") kw[m.id]={winner:away,loser:home};
+      // else: undetermined, no winner yet
+    } else {
+      kw[m.id]={winner:hg>ag?home:away,loser:hg>ag?away:home};
+    }
   });
   return kw;
 }
@@ -505,6 +513,10 @@ export default function App() {
     try{const s=localStorage.getItem("fwc2026_v2");if(s)return{...initResults(),...JSON.parse(s)};}catch{}
     return initResults();
   });
+  const [penaltyWinners,setPenaltyWinners]=useState(()=>{
+    try{const s=localStorage.getItem("fwc2026_penalties");if(s)return JSON.parse(s);}catch{}
+    return {};
+  });
   const [discipline,setDiscipline]=useState(()=>{
     try{const s=localStorage.getItem("fwc2026_discipline");if(s)return JSON.parse(s);}catch{}
     const d={};Object.values(GROUPS).flat().forEach(t=>{d[t]={ta:0,tr:0,pts:0};});return d;
@@ -529,6 +541,14 @@ export default function App() {
   },[results]);
 
   useEffect(()=>{
+    try{localStorage.setItem("fwc2026_penalties",JSON.stringify(penaltyWinners));}catch{}
+  },[penaltyWinners]);
+
+  const setPenaltyWinner=(matchId,side)=>{
+    setPenaltyWinners(p=>({...p,[matchId]:side}));
+  };
+
+  useEffect(()=>{
     try{localStorage.setItem("fwc2026_discipline",JSON.stringify(discipline));}catch{}
   },[discipline]);
 
@@ -545,7 +565,7 @@ export default function App() {
 
   const standings=useMemo(()=>allStandings(results),[results]);
   const bestThirds=useMemo(()=>assignBestThirds(standings,discipline),[standings,discipline]);
-  const knockoutWinners=useMemo(()=>computeKnockout(results,standings,bestThirds),[results,standings,bestThirds]);
+  const knockoutWinners=useMemo(()=>computeKnockout(results,standings,bestThirds,penaltyWinners),[results,standings,bestThirds,penaltyWinners]);
   const globalRanking=useMemo(()=>calcGlobalRanking(results,discipline),[results,discipline]);
   const stats=useMemo(()=>calcStats(results,discipline),[results,discipline]);
   const filtered=filterGroup==="Todos"?GROUP_MATCHES:GROUP_MATCHES.filter(m=>m.group===filterGroup);
@@ -747,7 +767,7 @@ export default function App() {
 
         {/* ── BRACKET ── */}
         {tab==="bracket"&&(
-          <BracketView standings={standings} knockoutWinners={knockoutWinners} results={results} onSet={setGoals} groupResults={results} bestThirds={bestThirds}/>
+          <BracketView standings={standings} knockoutWinners={knockoutWinners} results={results} onSet={setGoals} groupResults={results} bestThirds={bestThirds} penaltyWinners={penaltyWinners} onSetPenalty={setPenaltyWinner}/>
         )}
 
         {/* ── ESTADÍSTICAS ── */}
@@ -831,7 +851,7 @@ export default function App() {
 // ─────────────────────────────────────────────
 // BRACKET VIEW
 // ─────────────────────────────────────────────
-function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestThirds}) {
+function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestThirds,penaltyWinners,onSetPenalty}) {
   const [phase,setPhase]=useState("r32");
   const [view,setView]=useState("cards"); // "cards" | "tree"
   const phases=[
@@ -878,7 +898,8 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestT
               homeSlotLabel={homeRes?.label||slotLabel(m.homeSlot)}
               awayTeam={awayRes?.code||null} awayProv={awayRes?.provisional||false}
               awaySlotLabel={awayRes?.label||slotLabel(m.awaySlot)}
-              result={results[m.id]} onSet={onSet}/>;
+              result={results[m.id]} onSet={onSet}
+              penaltyWinner={penaltyWinners?.[m.id]} onSetPenalty={onSetPenalty}/>;
           })}
         </div>
       </>)}
@@ -887,7 +908,7 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestT
         <BracketTree
           standings={standings} knockoutWinners={knockoutWinners}
           results={results} groupResults={groupResults} bestThirds={bestThirds}
-          getTeam={getTeam}/>
+          getTeam={getTeam} penaltyWinners={penaltyWinners}/>
       )}
     </div>
   );
@@ -896,7 +917,7 @@ function BracketView({standings,knockoutWinners,results,onSet,groupResults,bestT
 // ─────────────────────────────────────────────
 // BRACKET TREE VIEW
 // ─────────────────────────────────────────────
-function BracketTree({standings,knockoutWinners,results,groupResults,bestThirds,getTeam}) {
+function BracketTree({standings,knockoutWinners,results,groupResults,bestThirds,getTeam,penaltyWinners}) {
   const allFixtures=[...R32_FIXTURE,...R16_FIXTURE,...QF_FIXTURE,...SF_FIXTURE,...FINAL_FIXTURE];
   const getMatch=(id)=>allFixtures.find(m=>m.id===id);
 
@@ -921,7 +942,11 @@ function BracketTree({standings,knockoutWinners,results,groupResults,bestThirds,
     const lbl=res?.label||slotLabel(slot);
     const sc=score(matchId);
     const played=!!sc;
-    const isWin=played&&((side==="home"&&sc.h>sc.a)||(side==="away"&&sc.a>sc.h));
+    const isDraw=played&&sc.h===sc.a;
+    const penWin=penaltyWinners?.[matchId];
+    const isWin=played&&(
+      isDraw ? (penWin===side) : ((side==="home"&&sc.h>sc.a)||(side==="away"&&sc.a>sc.h))
+    );
     const goals=sc?(side==="home"?sc.h:sc.a):null;
     return(
       <div style={{
@@ -1282,7 +1307,7 @@ function MatchCard({match,result,onSet}) {
   );
 }
 
-function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,homeSlotLabel,awaySlotLabel,result,onSet}) {
+function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,homeSlotLabel,awaySlotLabel,result,onSet,penaltyWinner,onSetPenalty}) {
   const resolved=!!homeTeam&&!!awayTeam;
   const provisional=(homeProv||awayProv)&&resolved;
   const played=result.homeGoals!==""&&result.awayGoals!=="";
@@ -1321,8 +1346,29 @@ function KOMatchCard({match,homeTeam,awayTeam,homeProv,awayProv,homeSlotLabel,aw
         <TeamBlock code={awayTeam} fallback={awaySlotLabel} win={aWin} align="left" prov={awayProv} slotLabel={awaySlotLabel}/>
       </div>
       {draw&&played&&(
-        <div style={{textAlign:"center",marginTop:6,fontSize:10,color:"#92400e",background:"#fffbeb",borderRadius:4,padding:"3px 6px"}}>
-          Empate — pasa local por defecto (ajusta si hubo penales)
+        <div style={{marginTop:8,padding:"8px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:6}}>
+          <div style={{fontSize:10,color:"#92400e",fontWeight:700,textAlign:"center",marginBottom:6}}>
+            ⚽ Empate — ¿Quién ganó en penales?
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>onSetPenalty?.(match.id,"home")} style={{
+              flex:1,padding:"6px 8px",borderRadius:5,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,
+              border:`1.5px solid ${penaltyWinner==="home"?C.gold:"#fcd34d"}`,
+              background:penaltyWinner==="home"?C.goldLight:"#fff",
+              color:penaltyWinner==="home"?C.gold:"#92400e",
+            }}>
+              {homeTeam?FLAGS[homeTeam]:"🏳️"} {homeTeam||"Local"}
+            </button>
+            <button onClick={()=>onSetPenalty?.(match.id,"away")} style={{
+              flex:1,padding:"6px 8px",borderRadius:5,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,
+              border:`1.5px solid ${penaltyWinner==="away"?C.gold:"#fcd34d"}`,
+              background:penaltyWinner==="away"?C.goldLight:"#fff",
+              color:penaltyWinner==="away"?C.gold:"#92400e",
+            }}>
+              {awayTeam?FLAGS[awayTeam]:"🏳️"} {awayTeam||"Visitante"}
+            </button>
+          </div>
+          {!penaltyWinner&&<div style={{fontSize:9,color:"#92400e",textAlign:"center",marginTop:4}}>Selecciona el ganador para avanzar a la siguiente ronda</div>}
         </div>
       )}
     </div>
