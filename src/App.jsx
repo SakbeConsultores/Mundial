@@ -214,20 +214,20 @@ const R32_FIXTURE = [
   {id:88,date:"2026-07-03",time:"14:00",homeSlot:"2D",awaySlot:"2G"},
 ];
 const R16_FIXTURE = [
-  {id:89,date:"2026-07-06",time:"17:00",homeSlot:"W74",awaySlot:"W77"},
-  {id:90,date:"2026-07-07",time:"13:00",homeSlot:"W73",awaySlot:"W75"},
-  {id:91,date:"2026-07-07",time:"16:00",homeSlot:"W76",awaySlot:"W78"},
-  {id:92,date:"2026-07-07",time:"20:00",homeSlot:"W79",awaySlot:"W80"},
-  {id:93,date:"2026-07-08",time:"15:00",homeSlot:"W83",awaySlot:"W84"},
-  {id:94,date:"2026-07-08",time:"20:00",homeSlot:"W81",awaySlot:"W82"},
-  {id:95,date:"2026-07-09",time:"12:00",homeSlot:"W86",awaySlot:"W88"},
-  {id:96,date:"2026-07-09",time:"16:00",homeSlot:"W85",awaySlot:"W87"},
+  {id:89,date:"2026-07-04",time:"17:00",homeSlot:"W74",awaySlot:"W77"},
+  {id:90,date:"2026-07-04",time:"13:00",homeSlot:"W73",awaySlot:"W75"},
+  {id:91,date:"2026-07-05",time:"16:00",homeSlot:"W76",awaySlot:"W78"},
+  {id:92,date:"2026-07-05",time:"20:00",homeSlot:"W79",awaySlot:"W80"},
+  {id:93,date:"2026-07-06",time:"15:00",homeSlot:"W83",awaySlot:"W84"},
+  {id:94,date:"2026-07-06",time:"20:00",homeSlot:"W81",awaySlot:"W82"},
+  {id:95,date:"2026-07-07",time:"12:00",homeSlot:"W86",awaySlot:"W88"},
+  {id:96,date:"2026-07-07",time:"16:00",homeSlot:"W85",awaySlot:"W87"},
 ];
 const QF_FIXTURE = [
-  {id:97,date:"2026-07-11",time:"16:00",homeSlot:"W89",awaySlot:"W90"},
-  {id:98,date:"2026-07-11",time:"15:00",homeSlot:"W93",awaySlot:"W94"},
-  {id:99,date:"2026-07-12",time:"17:00",homeSlot:"W91",awaySlot:"W92"},
-  {id:100,date:"2026-07-12",time:"21:00",homeSlot:"W95",awaySlot:"W96"},
+  {id:97,date:"2026-07-09",time:"16:00",homeSlot:"W89",awaySlot:"W90"},
+  {id:98,date:"2026-07-10",time:"15:00",homeSlot:"W93",awaySlot:"W94"},
+  {id:99,date:"2026-07-11",time:"17:00",homeSlot:"W91",awaySlot:"W92"},
+  {id:100,date:"2026-07-11",time:"21:00",homeSlot:"W95",awaySlot:"W96"},
 ];
 const SF_FIXTURE = [
   {id:101,date:"2026-07-14",time:"15:00",homeSlot:"W97",awaySlot:"W98"},
